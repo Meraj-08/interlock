@@ -4,79 +4,163 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Interlock — Approval Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #0b0d10; --panel: #14181d; --line: #232a31; --fg: #e7edf3;
-      --muted: #8b97a3; --accent: #34d399; --danger: #f87171; --chip: #1c232a;
+      --bg: #0a0b0d; --panel: #121418; --panel-2: #0d0f12; --line: #20242b;
+      --fg: #eef1f5; --muted: #868f9b; --soft: #5b636d;
+      --accent: #3ee0a0; --accent-dim: #164034;
+      --rose: #f2607e; --rose-dim: #3a1622;
+      --amber: #f2c15a; --amber-dim: #3a2f16;
+      --chip: #171a1f;
+      --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      --display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0; background: var(--bg); color: var(--fg);
-      font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-family: var(--display); font-size: 14px; line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
+
+    /* Status bar */
+    .statusbar {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      padding: 7px 16px; border-bottom: 1px solid var(--line);
+      background: var(--panel-2); font-family: var(--mono); font-size: 11px;
+      letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+    }
+    .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(62,224,160,.5); animation: pulse 2.4s infinite; }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(62,224,160,.45); }
+      70% { box-shadow: 0 0 0 6px rgba(62,224,160,0); }
+      100% { box-shadow: 0 0 0 0 rgba(62,224,160,0); }
+    }
+    .statusbar .count { color: var(--fg); }
+
+    /* Header */
     header {
-      padding: 20px 24px; border-bottom: 1px solid var(--line);
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      max-width: 900px; margin: 0 auto; padding: 26px 16px 8px;
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap;
     }
-    header h1 { font-size: 16px; margin: 0; letter-spacing: .3px; }
-    header .sub { color: var(--muted); font-size: 12px; }
+    .brand h1 {
+      margin: 0; font-family: var(--display); font-weight: 700; font-size: 22px;
+      letter-spacing: -.02em; display: flex; align-items: center; gap: 9px;
+    }
+    .brand .eyebrow {
+      font-family: var(--mono); font-size: 10.5px; letter-spacing: .22em;
+      text-transform: uppercase; color: var(--soft); margin-top: 6px;
+    }
     .approver { display: flex; align-items: center; gap: 8px; }
+    .approver label { font-family: var(--mono); font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--soft); }
     .approver input {
       background: var(--chip); border: 1px solid var(--line); color: var(--fg);
-      border-radius: 8px; padding: 6px 10px; font-size: 13px; width: 160px;
+      border-radius: 8px; padding: 7px 11px; font-family: var(--mono); font-size: 12px; width: 150px;
     }
-    main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
-    .empty { color: var(--muted); text-align: center; padding: 48px 0; }
+    .approver input:focus { outline: none; border-color: #333c46; }
+    .register {
+      background: var(--chip); color: var(--fg); border: 1px solid var(--line);
+      border-radius: 8px; font-family: var(--mono); font-size: 11px; padding: 7px 12px; cursor: pointer;
+      letter-spacing: .04em; transition: border-color .15s, color .15s;
+    }
+    .register:hover { border-color: #333c46; }
+    .register.done { color: var(--accent); border-color: var(--accent-dim); }
+
+    main { max-width: 900px; margin: 0 auto; padding: 16px 16px 72px; }
+    .empty { color: var(--soft); text-align: center; padding: 56px 0; font-family: var(--mono); font-size: 13px; }
+
+    /* Card */
     .card {
-      background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-      padding: 16px 18px; margin-bottom: 14px;
+      position: relative; background: var(--panel); border: 1px solid var(--line);
+      border-radius: 14px; padding: 18px 20px 18px 22px; margin-bottom: 14px;
+      overflow: hidden; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+      animation: rise .35s ease both;
     }
-    .card.pending { border-color: #3a4550; }
-    .row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-    .action { font-size: 15px; font-weight: 600; }
-    .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
-    .params {
-      margin: 12px 0; padding: 10px 12px; background: #0e1216; border: 1px solid var(--line);
-      border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 12px; color: #cdd6df; white-space: pre-wrap; word-break: break-word;
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .card::before { /* left accent edge */
+      content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--edge, var(--line));
     }
-    .consequence { color: #f0c674; font-size: 13px; margin: 8px 0; }
-    .hash { color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; }
+    .card.pending::after { /* focal glow */
+      content: ""; position: absolute; inset: 0; pointer-events: none;
+      background: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--edge) 14%, transparent), transparent 55%);
+    }
+    .card.pending:hover { transform: translateY(-2px); border-color: #2c333c; box-shadow: 0 10px 30px -12px rgba(0,0,0,.6); }
+
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: relative; }
+    .action { font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--fg); }
+    .badges { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .badge {
-      font-size: 11px; text-transform: uppercase; letter-spacing: .6px; padding: 3px 8px;
-      border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+      font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+      padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
     }
-    .badge.approved { color: var(--accent); border-color: #1f5f45; }
-    .badge.denied { color: var(--danger); border-color: #6b2b2b; }
-    .badge.pending { color: #f0c674; border-color: #6b5a2b; }
-    .actions { display: flex; gap: 10px; margin-top: 14px; }
-    button {
-      border: 0; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 600;
-      cursor: pointer; transition: transform .1s ease, opacity .1s ease;
+    .risk { color: var(--edge); border-color: color-mix(in srgb, var(--edge) 40%, var(--line)); }
+    .state.approved { color: var(--accent); border-color: var(--accent-dim); }
+    .state.denied { color: var(--rose); border-color: var(--rose-dim); }
+    .state.pending { color: var(--amber); border-color: var(--amber-dim); }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0 2px; }
+    .chip-id {
+      display: inline-flex; align-items: center; gap: 6px; background: var(--chip);
+      border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
+      font-family: var(--mono); font-size: 11px; color: var(--muted);
     }
-    button:active { transform: translateY(1px); }
-    .approve { background: var(--accent); color: #06231a; }
-    .deny { background: transparent; color: var(--danger); border: 1px solid #6b2b2b; }
-    .register { background: var(--chip); color: var(--fg); border: 1px solid var(--line); font-size: 12px; padding: 6px 12px; }
-    .register.done { color: var(--accent); border-color: #1f5f45; }
-    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); color: var(--fg); padding: 10px 16px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+    .chip-id .agent-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--edge); }
+    .chip-id b { color: var(--fg); font-weight: 500; }
+
+    .consequence { color: var(--amber); font-size: 13px; margin: 12px 0; display: flex; gap: 7px; }
+    .params {
+      margin: 12px 0; padding: 11px 13px; background: var(--panel-2); border: 1px solid var(--line);
+      border-radius: 9px; font-family: var(--mono); font-size: 12px; color: #c6cfd8;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .params .k { color: var(--muted); }
+    .hash { color: var(--soft); font-family: var(--mono); font-size: 10.5px; letter-spacing: .02em; }
+
+    .actions { display: flex; gap: 10px; margin-top: 15px; }
+    button.act {
+      border: 0; border-radius: 9px; padding: 9px 16px; font-family: var(--display);
+      font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+      transition: transform .1s ease, opacity .15s ease;
+    }
+    button.act:active { transform: translateY(1px); }
+    .approve { background: var(--accent); color: #05231a; }
+    .approve:hover { opacity: .92; }
+    .deny { background: transparent; color: var(--rose); border: 1px solid var(--rose-dim); }
+    .deny:hover { border-color: var(--rose); }
+    .note { font-family: var(--mono); font-size: 12px; margin-top: 8px; display: flex; gap: 7px; align-items: center; }
+    .note.approved { color: var(--accent); }
+    .note.denied { color: var(--rose); }
+
+    .toast {
+      position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+      background: var(--panel); border: 1px solid var(--line); color: var(--fg);
+      padding: 10px 16px; border-radius: 10px; font-family: var(--mono); font-size: 12px;
+      opacity: 0; transition: opacity .2s; pointer-events: none; box-shadow: 0 12px 30px -12px rgba(0,0,0,.7);
+    }
     .toast.show { opacity: 1; }
-    .approved-note { color: var(--accent); font-size: 12px; margin-top: 6px; }
-    .denied-note { color: var(--danger); font-size: 12px; margin-top: 6px; }
   </style>
 </head>
 <body>
+  <div class="statusbar">
+    <span class="dot"></span>
+    <span id="status">System online</span>
+  </div>
+
   <header>
-    <div>
-      <h1>🔒 Interlock — Approval Console</h1>
-      <div class="sub">A human circuit-breaker for risky agent actions</div>
+    <div class="brand">
+      <h1>🔒 Interlock</h1>
+      <div class="eyebrow">Human circuit-breaker · agent action approvals</div>
     </div>
     <div class="approver">
-      <span class="sub">Approver</span>
+      <label>Approver</label>
       <input id="approver" value="ops-console" />
       <button class="register" id="registerBtn" onclick="register()">Register passkey</button>
     </div>
   </header>
+
   <main>
     <div id="list"><div class="empty">Loading…</div></div>
   </main>
@@ -90,50 +174,77 @@
     const approverEl = document.getElementById('approver');
     const registerBtn = document.getElementById('registerBtn');
     const toastEl = document.getElementById('toast');
+    const statusEl = document.getElementById('status');
 
     function toast(msg) {
       toastEl.textContent = msg;
       toastEl.classList.add('show');
       setTimeout(() => toastEl.classList.remove('show'), 2600);
     }
+    function esc(s) {
+      return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
     async function postJSON(url, body) {
       return fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     }
 
-    function esc(s) {
-      return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const RISK = {
+      critical: { label: 'CRITICAL', color: 'var(--rose)' },
+      high: { label: 'HIGH', color: 'var(--amber)' },
+      elevated: { label: 'ELEVATED', color: 'var(--amber)' },
+      low: { label: 'LOW', color: 'var(--accent)' },
+    };
+    function edgeColor(p) {
+      if (p.state === 'approved') return 'var(--accent)';
+      if (p.state === 'denied') return 'var(--rose)';
+      return (RISK[p.riskClass] || { color: 'var(--muted)' }).color;
     }
 
     function card(p) {
-      const badge = `<span class="badge ${p.state}">${p.state}</span>`;
-      const params = `<div class="params">${esc(JSON.stringify(p.params ?? {}, null, 2))}</div>`;
+      const edge = edgeColor(p);
+      const risk = RISK[p.riskClass];
+      const riskBadge = risk ? `<span class="badge risk">${risk.label}</span>` : '';
+      const stateBadge = `<span class="badge state ${p.state}">${p.state}</span>`;
+      const chips = `<div class="chips">
+        <span class="chip-id"><span class="agent-dot"></span>agent <b>${esc(p.agent)}</b></span>
+        <span class="chip-id">on behalf of <b>${esc(p.onBehalfOf)}</b></span>
+      </div>`;
       const consequence = p.consequence ? `<div class="consequence">⚠ ${esc(p.consequence)}</div>` : '';
-      const hash = `<div class="hash">action_hash ${esc((p.action_hash || '').slice(0, 32))}…</div>`;
+      const params = `<div class="params">${esc(JSON.stringify(p.params ?? {}, null, 2))}</div>`;
+      const hash = `<div class="hash">action_hash ${esc((p.action_hash || '').slice(0, 40))}…</div>`;
       let footer = '';
       if (p.state === 'pending') {
         footer = `<div class="actions">
-          <button class="approve" onclick="approve('${p.id}')">Approve with passkey</button>
-          <button class="deny" onclick="deny('${p.id}')">Deny</button>
+          <button class="act approve" onclick="approve('${p.id}')">🔑 Approve with passkey</button>
+          <button class="act deny" onclick="deny('${p.id}')">Deny</button>
         </div>`;
       } else if (p.state === 'approved') {
-        footer = `<div class="approved-note">✓ Approved by ${esc(p.approver || '')} · single-use proof issued</div>`;
+        footer = `<div class="note approved">✓ Approved by ${esc(p.approver || '')} · single-use proof issued</div>`;
       } else if (p.state === 'denied') {
-        footer = `<div class="denied-note">✕ Denied by ${esc(p.approver || '')}</div>`;
+        footer = `<div class="note denied">✕ Denied by ${esc(p.approver || '')}</div>`;
       }
-      return `<div class="card ${p.state}">
-        <div class="row"><div class="action">${esc(p.action)}</div>${badge}</div>
-        <div class="meta">${esc(p.agent)} on behalf of ${esc(p.onBehalfOf)}</div>
-        ${consequence}${params}${hash}${footer}
+      return `<div class="card ${p.state}" style="--edge:${edge}">
+        <div class="row"><span class="action">${esc(p.action)}</span>
+          <span class="badges">${riskBadge}${stateBadge}</span></div>
+        ${chips}${consequence}${params}${hash}${footer}
       </div>`;
+    }
+
+    function setStatus(items) {
+      const n = (s) => items.filter((p) => p.state === s).length;
+      statusEl.innerHTML =
+        `System online · <span class="count">${n('pending')}</span> pending · ` +
+        `<span class="count">${n('approved')}</span> approved · ` +
+        `<span class="count">${n('denied')}</span> denied`;
     }
 
     async function refresh() {
       try {
-        const res = await fetch('/api/proposals');
-        const items = await res.json();
+        const items = await (await fetch('/api/proposals')).json();
+        setStatus(items);
         listEl.innerHTML = items.length
           ? items.map(card).join('')
-          : '<div class="empty">No proposals yet. Agents will appear here when they request a risky action.</div>';
+          : '<div class="empty">No proposals yet — agents appear here when they request a risky action.</div>';
       } catch {
         listEl.innerHTML = '<div class="empty">Cannot reach the server.</div>';
       }
@@ -156,7 +267,7 @@
         const { verified } = await (await postJSON('/api/webauthn/register/verify', { approver, response: attResp })).json();
         toast(verified ? 'Passkey registered ✓' : 'Registration failed');
         updateRegisterButton();
-      } catch (e) {
+      } catch {
         toast('Registration cancelled');
       }
     }
@@ -170,7 +281,7 @@
         const asseResp = await startAuthentication({ optionsJSON: options });
         const res = await postJSON(`/api/proposals/${id}/approve/verify`, { approver, response: asseResp });
         toast(res.ok ? 'Approved with passkey ✓' : 'Passkey verification failed');
-      } catch (e) {
+      } catch {
         toast('Approval cancelled');
       }
       refresh();

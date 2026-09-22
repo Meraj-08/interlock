@@ -80,6 +80,7 @@ export class ApprovalAuthority {
       onBehalfOf: p.onBehalfOf,
       action: p.action,
       params: p.params,
+      riskClass: p.riskClass ?? null,
       consequence: p.consequence ?? '',
       proof: null,
       jti: null,

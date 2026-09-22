@@ -161,6 +161,7 @@ function publicView(p) {
     onBehalfOf: p.onBehalfOf,
     action: p.action,
     params: p.params,
+    riskClass: p.riskClass ?? null,
     consequence: p.consequence,
     action_hash: p.hash,
     approver: p.approver ?? null,
