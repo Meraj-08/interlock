@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 28" width="44" height="28">
+  <defs>
+    <mask id="w"><rect width="44" height="28" fill="#fff"/><rect x="17" y="15" width="10" height="10" fill="#000"/></mask>
+  </defs>
+  <rect x="3" y="5" width="22" height="18" rx="9" fill="none" stroke="#16181d" stroke-width="3.6" mask="url(#w)"/>
+  <rect x="19" y="5" width="22" height="18" rx="9" fill="none" stroke="#0ca678" stroke-width="3.6"/>
+</svg>

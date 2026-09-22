@@ -4,103 +4,223 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Interlock — a human circuit-breaker for risky AI-agent actions</title>
-  <meta name="description" content="Interlock is a human-in-the-loop circuit breaker for high-risk AI-agent actions: propose, risk-triage, passkey approval, single-use proof, execute exactly once." />
+  <meta name="description" content="Interlock pauses high-stakes AI-agent actions for a human to approve with a passkey, then lets the agent execute exactly once with a single-use signed proof." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="icon" href="/logo.svg" type="image/svg+xml" />
   <style>
     :root {
-      --bg: #0a0b0d; --panel: #121418; --panel-2: #0d0f12; --line: #20242b;
-      --fg: #eef1f5; --muted: #868f9b; --soft: #5b636d;
-      --accent: #3ee0a0; --accent-dim: #164034; --rose: #f2607e; --amber: #f2c15a;
-      --chip: #171a1f;
+      --bg: #f7f5ef; --surface: #ffffff; --surface-2: #fbfaf6;
+      --ink: #16181d; --muted: #5f666f; --soft: #949aa2; --line: #e6e2d7;
+      --accent: #0ca678; --accent-soft: #e7f6f0; --rose: #e11d63; --amber: #b8860b;
       --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
       --display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
     }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
     body {
-      margin: 0; background: var(--bg); color: var(--fg);
+      margin: 0; background: var(--bg); color: var(--ink); position: relative; overflow-x: hidden;
       font-family: var(--display); line-height: 1.55; -webkit-font-smoothing: antialiased;
     }
     a { color: inherit; text-decoration: none; }
-    .wrap { max-width: 980px; margin: 0 auto; padding: 0 20px; }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
     .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: var(--soft); }
 
-    /* status bar */
-    .statusbar {
-      display: flex; align-items: center; justify-content: center; gap: 10px;
-      padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel-2);
-      font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+    /* scroll progress bar */
+    #progress {
+      position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 60; transform: scaleX(0); transform-origin: 0 50%;
+      background: linear-gradient(90deg, var(--accent), #35d6a4); box-shadow: 0 0 10px rgba(12,166,120,.5);
     }
-    .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--accent);
-      box-shadow: 0 0 0 0 rgba(62,224,160,.5); animation: pulse 2.4s infinite; }
-    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(62,224,160,.45)} 70%{box-shadow:0 0 0 6px rgba(62,224,160,0)} 100%{box-shadow:0 0 0 0 rgba(62,224,160,0)} }
 
-    /* nav */
-    nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
-    .brand { font-weight: 700; font-size: 18px; letter-spacing: -.02em; display: flex; align-items: center; gap: 8px; }
-    .nav-links { display: flex; align-items: center; gap: 22px; }
+    /* aurora background */
+    .aurora { position: absolute; inset: 0 0 auto; height: 900px; z-index: 0; pointer-events: none; overflow: hidden; }
+    .blob { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .5; }
+    .blob.a { width: 520px; height: 520px; left: -120px; top: -140px; background: radial-gradient(circle, rgba(12,166,120,.55), transparent 70%); animation: drift1 18s ease-in-out infinite; }
+    .blob.b { width: 480px; height: 480px; right: -100px; top: -60px; background: radial-gradient(circle, rgba(225,29,99,.32), transparent 70%); animation: drift2 22s ease-in-out infinite; }
+    .blob.c { width: 420px; height: 420px; left: 42%; top: 120px; background: radial-gradient(circle, rgba(53,214,164,.4), transparent 70%); animation: drift3 26s ease-in-out infinite; }
+    @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(60px,40px)} }
+    @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-50px,50px)} }
+    @keyframes drift3 { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(30px,-30px) scale(1.08)} }
+
+    /* logo */
+    .logo { display: inline-flex; align-items: center; gap: 10px; }
+    .logo svg { width: 34px; height: 24px; overflow: visible; }
+    .logo .lk { fill: none; stroke-width: 3.6; stroke-linecap: round;
+      stroke-dasharray: 120; stroke-dashoffset: 120; animation: draw 1.1s .15s ease forwards; }
+    .logo .lk.back { stroke: var(--ink); }
+    .logo .lk.front { stroke: var(--accent); animation-delay: .35s; }
+    .logo:hover .lk.front { animation: spin 3.5s linear infinite; transform-origin: 30px 14px; }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .logo b { font-weight: 700; font-size: 19px; letter-spacing: -.02em; }
+
+    /* nav (sticky) */
+    .navbar { position: sticky; top: 0; z-index: 50; transition: background .25s ease, border-color .25s ease, backdrop-filter .25s; border-bottom: 1px solid transparent; }
+    .navbar.scrolled { background: rgba(247,245,239,.8); backdrop-filter: saturate(180%) blur(12px); border-bottom-color: var(--line); }
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; }
+    .nav-links { display: flex; align-items: center; gap: 24px; }
     .nav-links a.mut { font-family: var(--mono); font-size: 12px; color: var(--muted); }
-    .nav-links a.mut:hover { color: var(--fg); }
+    .nav-links a.mut:hover { color: var(--ink); }
 
-    .btn {
-      display: inline-flex; align-items: center; gap: 8px; border-radius: 10px; padding: 10px 18px;
+    .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 10px; padding: 11px 18px;
       font-family: var(--display); font-weight: 600; font-size: 14px; cursor: pointer; border: 1px solid transparent;
-      transition: transform .12s ease, opacity .15s ease, border-color .15s ease, background .15s ease;
-    }
+      transition: transform .12s ease, opacity .15s ease, border-color .15s ease, box-shadow .2s ease; }
     .btn:active { transform: translateY(1px); }
-    .btn-primary { background: var(--accent); color: #05231a; }
-    .btn-primary:hover { opacity: .92; }
-    .btn-ghost { background: transparent; color: var(--fg); border-color: var(--line); }
-    .btn-ghost:hover { border-color: #333c46; }
-    .btn-sm { padding: 8px 14px; font-size: 13px; }
+    .btn-dark { background: var(--ink); color: #fff; }
+    .btn-dark:hover { opacity: .92; box-shadow: 0 10px 24px -12px rgba(0,0,0,.5); }
+    .btn-ghost { background: var(--surface); color: var(--ink); border-color: var(--line); }
+    .btn-ghost:hover { border-color: #cfc9ba; }
+    .btn-sm { padding: 9px 15px; font-size: 13px; }
+    .btn .a { transition: transform .18s ease; }
+    .btn:hover .a { transform: translateX(3px); }
 
     /* hero */
-    .hero { padding: 64px 0 40px; }
-    .hero h1 {
-      font-size: clamp(38px, 6vw, 62px); line-height: 1.02; letter-spacing: -.03em; font-weight: 700;
-      margin: 16px 0 0; max-width: 15ch;
-    }
+    .hero { padding: 60px 0 28px; text-align: center; }
+    .hero h1 { font-size: clamp(40px, 7vw, 76px); line-height: 1.0; letter-spacing: -.035em; font-weight: 700; margin: 18px auto 0; max-width: 16ch; }
     .hero h1 .rose { color: var(--rose); }
-    .hero p.sub { color: var(--muted); font-size: clamp(16px, 2.4vw, 19px); max-width: 56ch; margin: 20px 0 0; }
-    .hero .cta { display: flex; gap: 12px; margin-top: 30px; flex-wrap: wrap; }
-    .backed { margin-top: 26px; font-family: var(--mono); font-size: 11px; color: var(--soft); letter-spacing: .06em; }
-    .backed b { color: var(--muted); font-weight: 500; }
+    .hero p.sub { color: var(--muted); font-size: clamp(16px, 2.3vw, 20px); max-width: 60ch; margin: 22px auto 0; }
+    .hero .cta { display: flex; gap: 12px; margin-top: 30px; justify-content: center; flex-wrap: wrap; }
+    .builton { margin-top: 26px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; align-items: center;
+      font-family: var(--mono); font-size: 11px; color: var(--soft); letter-spacing: .04em; }
+    .builton .pill { border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; background: var(--surface); color: var(--muted); }
 
-    section { padding: 40px 0; border-top: 1px solid var(--line); }
-    .section-label { font-family: var(--mono); font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--soft); margin-bottom: 22px; }
+    /* announcement pill */
+    .announce { display: inline-flex; align-items: center; gap: 9px; background: var(--ink); color: #fff;
+      border-radius: 999px; padding: 7px 8px 7px 14px; font-family: var(--mono); font-size: 12px; }
+    .announce .tag { background: var(--accent); color: #05231a; border-radius: 999px; padding: 2px 8px; font-weight: 600; font-size: 11px; }
+    .announce .chev { opacity: .6; }
 
-    /* flow steps */
+    /* product preview */
+    .preview-wrap { padding: 24px 0 10px; }
+    .preview { position: relative; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: var(--surface);
+      box-shadow: 0 40px 90px -50px rgba(12,166,120,.5), 0 20px 50px -30px rgba(0,0,0,.25); animation: floaty 7s ease-in-out infinite; }
+    .preview::before { content: ""; position: absolute; left: 50%; top: -30%; transform: translateX(-50%);
+      width: 70%; height: 240px; background: radial-gradient(closest-side, rgba(12,166,120,.22), transparent); pointer-events: none; z-index: 2; }
+    .preview img { display: block; width: 100%; height: auto; }
+    @keyframes floaty { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+
+    /* console mockup (dark) */
+    .preview.console { background: #0d0f12; border-color: #20242b; }
+    .cwin { position: relative; padding: 14px 16px 18px; font-family: var(--mono); color: #e7edf3; }
+    .cbar { display: flex; gap: 8px; justify-content: center; align-items: center; text-align: center; font-size: 10px;
+      letter-spacing: .12em; color: #868f9b; padding: 4px 0 12px; border-bottom: 1px solid #1c2229; }
+    .cbar b { color: #e7edf3; } .cbar em { color: #3b434c; font-style: normal; }
+    .cdot { width: 7px; height: 7px; border-radius: 50%; background: #3ee0a0; box-shadow: 0 0 8px #3ee0a0; animation: cpulse 2.4s infinite; }
+    @keyframes cpulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+    .chead { display: flex; justify-content: space-between; align-items: center; padding: 12px 2px 4px; }
+    .cbrand { font-size: 13px; display: flex; gap: 8px; align-items: center; }
+    .cbrand b { font-weight: 600; } .cbrand span { font-size: 9px; letter-spacing: .16em; text-transform: uppercase; color: #5b636d; }
+    .capprover { display: flex; gap: 7px; align-items: center; font-size: 10px; color: #868f9b; }
+    .capprover span { color: #5b636d; letter-spacing: .12em; }
+    .capprover em { font-style: normal; background: #171a1f; border: 1px solid #232a31; border-radius: 6px; padding: 3px 8px; color: #cdd6df; }
+    .cpk { font-style: normal; color: #3ee0a0; border: 1px solid #164034; border-radius: 999px; padding: 3px 8px; }
+    .cbody { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
+    .ccard { position: relative; background: #14181d; border: 1px solid #232a31; border-radius: 12px; padding: 14px 16px 14px 18px; overflow: hidden;
+      transition: border-color .4s ease; }
+    .ccard::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--e, #232a31); transition: background .4s ease; }
+    .ccard.crit { --e: #f2607e; } .ccard.ok { --e: #3ee0a0; } .ccard.hi { --e: #f2c15a; } .ccard.elv { --e: #f2c15a; }
+    .ccard.crit::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+      background: radial-gradient(120% 90% at 0 0, rgba(242,96,126,.12), transparent 55%); }
+    .crow { display: flex; justify-content: space-between; align-items: center; gap: 10px; position: relative; }
+    .cact { font-size: 13px; font-weight: 600; color: #e7edf3; }
+    .cbadges { display: flex; gap: 6px; }
+    .cb { font-size: 9px; letter-spacing: .1em; padding: 2px 7px; border-radius: 999px; border: 1px solid #232a31; color: #868f9b; transition: color .3s, border-color .3s; }
+    .cb.crit { color: #f2607e; border-color: #3a1622; } .cb.hi, .cb.elvb { color: #f2c15a; border-color: #3a2f16; }
+    .cb.st { color: #f2c15a; border-color: #3a2f16; } .cb.okb, .cb.st.done { color: #3ee0a0; border-color: #164034; }
+    .cchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .cchip { display: inline-flex; align-items: center; gap: 5px; background: #171a1f; border: 1px solid #232a31; border-radius: 999px; padding: 2px 8px; font-size: 10px; color: #868f9b; }
+    .cchip b { color: #e7edf3; font-weight: 500; } .cchip.cmeta { color: #5b636d; }
+    .cd { width: 5px; height: 5px; border-radius: 50%; background: #3ee0a0; } .cd.rose { background: #f2607e; }
+    .cwarn { color: #f2c15a; font-size: 11.5px; margin: 10px 0; }
+    .cjson { margin: 10px 0; padding: 10px 12px; background: #0d0f12; border: 1px solid #232a31; border-radius: 8px; font-size: 11px; color: #c6cfd8; white-space: pre; overflow: auto; }
+    .cjson .k { color: #868f9b; } .cjson .s { color: #8fd6b4; } .cjson .n { color: #f2c15a; } .cjson .p { color: #5b636d; }
+    .chash { color: #5b636d; font-size: 10px; margin-top: 8px; } .chash b { color: #868f9b; font-weight: 400; } .chash em { font-style: normal; color: #3b434c; }
+    .cfoot { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+    .cbtn { border: 0; border-radius: 8px; padding: 7px 12px; font-family: var(--mono); font-size: 11px; font-weight: 600; cursor: default; display: inline-flex; align-items: center; gap: 6px; }
+    .cbtn.app { background: #3ee0a0; color: #05231a; } .cbtn.den { background: transparent; color: #f2607e; border: 1px solid #3a1622; }
+    .cbtn.app.busy { background: #2a7d5f; color: #d7fff0; }
+    .cspin { width: 10px; height: 10px; border: 2px solid rgba(215,255,240,.35); border-top-color: #d7fff0; border-radius: 50%; animation: sp .7s linear infinite; }
+    @keyframes sp { to { transform: rotate(360deg); } }
+    .cnote { color: #3ee0a0; font-size: 11px; margin-top: 12px; }
+    .cscan { position: absolute; left: 0; right: 0; top: 0; height: 130px; pointer-events: none; z-index: 4;
+      background: linear-gradient(180deg, rgba(62,224,160,.10), transparent); animation: cscan 6.5s ease-in-out infinite; }
+    @keyframes cscan { 0%{ transform: translateY(-150px); opacity: 0 } 18%{ opacity: 1 } 60%{ opacity: .35 } 100%{ transform: translateY(600px); opacity: 0 } }
+
+    section { padding: 56px 0; border-top: 1px solid var(--line); }
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 26px; flex-wrap: wrap; }
+    .section-head h2 { font-size: clamp(24px, 3.4vw, 34px); letter-spacing: -.025em; margin: 6px 0 0; max-width: 20ch; }
+    .section-label { font-family: var(--mono); font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--soft); }
+    .section-head p { color: var(--muted); max-width: 42ch; margin: 0; font-size: 15px; }
+
+    /* steps */
     .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-    .step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; position: relative; }
-    .step .n { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .1em; }
-    .step h3 { margin: 10px 0 6px; font-size: 16px; letter-spacing: -.01em; }
+    .step { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; position: relative;
+      transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+    .step:hover { transform: translateY(-4px); box-shadow: 0 18px 40px -24px rgba(0,0,0,.35); border-color: #d8d3c6; }
+    .step .n { font-family: var(--mono); font-size: 12px; color: var(--accent); font-weight: 600; }
+    .step h3 { margin: 12px 0 6px; font-size: 16px; letter-spacing: -.01em; }
     .step p { margin: 0; color: var(--muted); font-size: 13.5px; }
-    .step .arrow { position: absolute; right: -11px; top: 50%; transform: translateY(-50%); color: var(--soft); z-index: 2; font-family: var(--mono); }
+    .step .arrow { position: absolute; right: -11px; top: 50%; transform: translateY(-50%); color: var(--soft); font-family: var(--mono); z-index: 3; }
     .step:last-child .arrow { display: none; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--line);
+      border-radius: 999px; padding: 3px 9px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+    .chip .d { width: 6px; height: 6px; border-radius: 999px; background: var(--accent); }
+    .chip .d.rose { background: var(--rose); }
+    .chip b { color: var(--ink); font-weight: 500; }
 
     /* guarantees */
     .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-    .feat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+    .feat { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px;
+      transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+    .feat:hover { transform: translateY(-4px); box-shadow: 0 18px 40px -24px rgba(0,0,0,.35); border-color: #d8d3c6; }
     .feat .k { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
-    .feat h3 { margin: 8px 0 6px; font-size: 16px; }
-    .feat p { margin: 0; color: var(--muted); font-size: 13.5px; }
+    .feat h3 { margin: 10px 0 6px; font-size: 17px; letter-spacing: -.01em; }
+    .feat p { margin: 0; color: var(--muted); font-size: 14px; }
+    .feat.danger .k { color: var(--rose); }
 
-    /* preview */
-    .preview { position: relative; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--panel-2); }
-    .preview::before { content: ""; position: absolute; inset: -40% 20% auto; height: 260px;
-      background: radial-gradient(closest-side, rgba(62,224,160,.16), transparent); pointer-events: none; }
-    .preview img { display: block; width: 100%; height: auto; }
-    .preview .cap { font-family: var(--mono); font-size: 11px; color: var(--soft); padding: 12px 16px; border-top: 1px solid var(--line); letter-spacing: .04em; }
+    .final { text-align: center; }
+    .final h2 { font-size: clamp(28px, 4vw, 42px); letter-spacing: -.03em; margin: 0 auto; max-width: 18ch; }
+    .final p { color: var(--muted); margin: 16px auto 0; max-width: 46ch; }
+    .final .cta { display: flex; gap: 12px; justify-content: center; margin-top: 26px; flex-wrap: wrap; }
 
-    /* footer */
     footer { border-top: 1px solid var(--line); padding: 28px 0 48px; }
     .foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
       font-family: var(--mono); font-size: 12px; color: var(--soft); }
-    .foot a:hover { color: var(--fg); }
+    .foot a:hover { color: var(--ink); }
 
-    @media (max-width: 720px) {
+    /* GLSL shader background (falls back to .aurora when WebGL is unavailable) */
+    .gl-bg { position: absolute; top: 0; left: 0; width: 100%; height: min(1040px, 125vh); z-index: 0; pointer-events: none;
+      -webkit-mask-image: linear-gradient(#000 58%, transparent); mask-image: linear-gradient(#000 58%, transparent); }
+    .gl-bg canvas { display: block; width: 100%; height: 100%; }
+    body.gl-on .aurora { display: none; }
+
+    /* film grain */
+    .grain { position: fixed; inset: 0; z-index: 3; pointer-events: none; opacity: .045; mix-blend-mode: overlay; background-size: 160px 160px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+    /* cursor spotlight (hero) */
+    #spotlight { position: fixed; left: 0; top: 0; width: 560px; height: 560px; border-radius: 50%; z-index: 0; pointer-events: none;
+      transform: translate(-50%, -50%); opacity: 0; transition: opacity .35s ease;
+      background: radial-gradient(closest-side, rgba(12,166,120,.12), transparent 70%); }
+
+    /* 3D tilt on the product panel */
+    .preview-wrap { perspective: 1400px; }
+    .tilt { transform-style: preserve-3d; transition: transform .3s cubic-bezier(.2,.7,.2,1); will-change: transform; }
+
+    /* scroll reveal */
+    [data-reveal] { opacity: 0; transform: translateY(22px); transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1);
+      transition-delay: calc(var(--i, 0) * 80ms); }
+    [data-reveal].in { opacity: 1; transform: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, .blob, .preview, .logo .lk { animation: none !important; }
+      [data-reveal] { opacity: 1; transform: none; transition: none; }
+      .gl-bg, #spotlight, .grain, .cscan { display: none; }
+      html { scroll-behavior: auto; }
+    }
+    @media (max-width: 780px) {
       .steps { grid-template-columns: 1fr 1fr; }
       .step .arrow { display: none; }
       .grid { grid-template-columns: 1fr; }
@@ -109,103 +229,350 @@
   </style>
 </head>
 <body>
-  <div class="statusbar">
-    <span class="dot"></span>
-    <span>Interlock · human-in-the-loop for AI agents</span>
+  <div id="progress"></div>
+  <div class="gl-bg"><canvas id="gl"></canvas></div>
+  <div class="aurora" id="aurora"><span class="blob a"></span><span class="blob b"></span><span class="blob c"></span></div>
+  <div class="grain"></div>
+  <div id="spotlight"></div>
+
+  <div class="navbar" id="navbar">
+    <div class="wrap">
+      <nav>
+        <a class="logo" href="/" aria-label="Interlock home">
+          <svg viewBox="0 0 44 28" aria-hidden="true">
+            <defs><mask id="ilweave"><rect width="44" height="28" fill="#fff"/><rect x="17" y="15" width="10" height="10" fill="#000"/></mask></defs>
+            <rect class="lk back" x="3" y="5" width="22" height="18" rx="9" fill="none" mask="url(#ilweave)"/>
+            <rect class="lk front" x="19" y="5" width="22" height="18" rx="9" fill="none"/>
+          </svg>
+          <b>Interlock</b>
+        </a>
+        <div class="nav-links">
+          <a class="mut" href="#how">How it works</a>
+          <a class="mut" href="#guarantees">Guarantees</a>
+          <a class="mut" href="https://github.com/Meraj-08/interlock" target="_blank" rel="noopener">GitHub</a>
+          <a class="btn btn-dark btn-sm" href="/console">Launch console <span class="a">→</span></a>
+        </div>
+      </nav>
+    </div>
   </div>
 
   <div class="wrap">
-    <nav>
-      <div class="brand">🔒 Interlock</div>
-      <div class="nav-links">
-        <a class="mut" href="#how">How it works</a>
-        <a class="mut" href="#guarantees">Guarantees</a>
-        <a class="mut" href="https://github.com/Meraj-08/interlock" target="_blank" rel="noopener">GitHub</a>
-        <a class="btn btn-primary btn-sm" href="/console">Launch console →</a>
-      </div>
-    </nav>
-
     <header class="hero">
-      <div class="eyebrow">▪ A circuit-breaker for risky agent actions</div>
-      <h1>Agents move fast. Humans hold the keys to the <span class="rose">irreversible</span>.</h1>
-      <p class="sub">
+      <div data-reveal style="display:flex;justify-content:center;margin-bottom:22px">
+        <a class="announce" href="#how"><span class="tag">New</span> Passkey approvals for high-risk agent actions <span class="chev">→</span></a>
+      </div>
+      <div class="eyebrow" data-reveal style="--i:1">Human-in-the-loop for AI agents</div>
+      <h1 data-reveal style="--i:2">Agents move fast. Humans hold the keys to the <span class="rose">irreversible</span>.</h1>
+      <p class="sub" data-reveal style="--i:3">
         Interlock sits at the execution boundary of your AI agents. When an action is
         high-stakes — moving money, changing a payout account, deleting data — it pauses,
         asks a human to approve the exact action with a passkey, and only then lets the
         agent run it, exactly once.
       </p>
-      <div class="cta">
-        <a class="btn btn-primary" href="/console">Launch the console →</a>
-        <a class="btn btn-ghost" href="https://github.com/Meraj-08/interlock" target="_blank" rel="noopener">View on GitHub</a>
+      <div class="cta" data-reveal style="--i:4">
+        <a class="btn btn-dark" href="/console">Launch the console <span class="a">→</span></a>
+        <a class="btn btn-ghost" href="https://github.com/Meraj-08/interlock" target="_blank" rel="noopener">View on GitHub ↗</a>
       </div>
-      <div class="backed">Built on the <b>Signet</b> Proof-of-Agency verifier · ES256 · verify → consume-once → fail-closed</div>
+      <div class="builton" data-reveal style="--i:5">
+        <span>Built on</span>
+        <span class="pill">Signet Proof-of-Agency</span><span class="pill">ES256</span><span class="pill">WebAuthn</span><span class="pill">fail-closed</span>
+      </div>
     </header>
+  </div>
 
+  <div class="wrap preview-wrap" data-reveal>
+    <div class="tilt" id="tilt">
+      <div class="preview console" role="img" aria-label="The Interlock approval console: a critical agent action being approved with a passkey">
+        <div class="cwin">
+          <div class="cbar"><span class="cdot"></span> SYSTEM ONLINE <em>·</em> <b>2</b> PENDING <em>·</em> <b>1</b> APPROVED <em>·</em> <b>0</b> DENIED</div>
+          <div class="chead">
+            <div class="cbrand">🔒 <b>Interlock</b> <span>human circuit-breaker</span></div>
+            <div class="capprover"><span>APPROVER</span><em>ops-console</em><i class="cpk">✓ passkey</i></div>
+          </div>
+          <div class="cbody">
+            <!-- animated critical card -->
+            <div class="ccard crit" id="mockCard">
+              <div class="crow"><span class="cact">payout.destination.change</span>
+                <span class="cbadges"><i class="cb crit">CRITICAL</i><i class="cb st" id="mockState">PENDING</i></span></div>
+              <div class="cchips"><span class="cchip"><i class="cd rose"></i>agent <b>support_bot</b></span><span class="cchip">for <b>user_88</b></span><span class="cchip cmeta">requested 2s ago</span></div>
+              <div class="cwarn">⚠ Future payouts go to a new bank account.</div>
+              <pre class="cjson"><span class="p">{</span>
+  <span class="k">"account"</span>: <span class="s">"acct_9921"</span>,
+  <span class="k">"bank"</span>: <span class="s">"HDFC"</span>,
+  <span class="k">"amount"</span>: <span class="n">48200.00</span>
+<span class="p">}</span></pre>
+              <div class="chash">action_hash <b>8a4541ca3e58…9d7da50</b> <em id="mockJti">· jti —</em></div>
+              <div class="cfoot" id="mockFoot">
+                <button class="cbtn app"><span class="klock">🔑</span> Approve with passkey</button>
+                <button class="cbtn den">Deny</button>
+              </div>
+            </div>
+            <!-- approved card -->
+            <div class="ccard ok">
+              <div class="crow"><span class="cact">refund.issue</span>
+                <span class="cbadges"><i class="cb hi">HIGH</i><i class="cb okb">APPROVED</i></span></div>
+              <div class="cchips"><span class="cchip"><i class="cd"></i>agent <b>ops_bot</b></span><span class="cchip">for <b>user_12</b></span></div>
+              <div class="cwarn amber">⚠ Refund $5,000 to the customer card.</div>
+              <div class="chash">action_hash <b>642f722acfef…b0398a</b></div>
+              <div class="cnote">✓ Approved by ops-console · single-use proof issued · consumed once</div>
+            </div>
+            <!-- pending card -->
+            <div class="ccard elv">
+              <div class="crow"><span class="cact">access.grant</span>
+                <span class="cbadges"><i class="cb elvb">ELEVATED</i><i class="cb st">PENDING</i></span></div>
+              <div class="cchips"><span class="cchip"><i class="cd"></i>agent <b>it_copilot</b></span><span class="cchip">for <b>user_31</b></span></div>
+              <div class="cwarn amber">⚠ Grant admin role on the billing workspace.</div>
+              <div class="cfoot"><button class="cbtn app"><span class="klock">🔑</span> Approve with passkey</button><button class="cbtn den">Deny</button></div>
+            </div>
+          </div>
+          <div class="cscan"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
     <section id="how">
-      <div class="section-label">How it works</div>
+      <div class="section-head" data-reveal>
+        <div>
+          <div class="section-label">How it works</div>
+          <h2>From agent request to a single, human-approved action.</h2>
+        </div>
+        <p>Four steps. Nothing high-stakes runs until a human signs off on the exact request.</p>
+      </div>
       <div class="steps">
-        <div class="step">
+        <div class="step" data-reveal style="--i:0">
           <div class="n">01</div><h3>Propose</h3>
           <p>The agent proposes an action with its exact parameters, on behalf of a user.</p>
+          <div class="chips"><span class="chip"><span class="d"></span>agent <b>support_bot</b></span><span class="chip">for <b>user_42</b></span></div>
           <span class="arrow">→</span>
         </div>
-        <div class="step">
+        <div class="step" data-reveal style="--i:1">
           <div class="n">02</div><h3>Triage</h3>
-          <p>A risk policy decides: auto-allow, needs a human, or deny outright.</p>
+          <p>A risk policy decides in-line: auto-allow, needs a human, or deny outright.</p>
+          <div class="chips"><span class="chip"><span class="d rose"></span>high risk</span><span class="chip">needs approval</span></div>
           <span class="arrow">→</span>
         </div>
-        <div class="step">
+        <div class="step" data-reveal style="--i:2">
           <div class="n">03</div><h3>Approve</h3>
           <p>A human reviews the exact action and approves it with a WebAuthn passkey.</p>
+          <div class="chips"><span class="chip"><span class="d"></span>Touch ID</span><span class="chip">assertion verified</span></div>
           <span class="arrow">→</span>
         </div>
-        <div class="step">
+        <div class="step" data-reveal style="--i:3">
           <div class="n">04</div><h3>Execute once</h3>
           <p>A single-use signed proof lets the agent run the action — exactly one time.</p>
+          <div class="chips"><span class="chip"><span class="d"></span>proof consumed</span></div>
         </div>
       </div>
     </section>
 
     <section id="guarantees">
-      <div class="section-label">Guarantees</div>
+      <div class="section-head" data-reveal>
+        <div>
+          <div class="section-label">Guarantees</div>
+          <h2>Built to fail safe, not fail open.</h2>
+        </div>
+        <p>Every path that isn't a clean, human-approved yes ends in a refusal.</p>
+      </div>
       <div class="grid">
-        <div class="feat">
-          <div class="k">Single-use</div>
-          <h3>No double-spend</h3>
-          <p>Each approval mints one proof that is consumed exactly once. Replays are refused.</p>
-        </div>
-        <div class="feat">
-          <div class="k">Bound</div>
-          <h3>What's approved is what runs</h3>
-          <p>The proof binds to the exact parameters. Approve $10, try to run $10,000 — blocked.</p>
-        </div>
-        <div class="feat">
-          <div class="k">Fail-closed</div>
-          <h3>Never a silent yes</h3>
-          <p>If anything is off — expired, tampered, or the authority is unreachable — it refuses.</p>
-        </div>
-        <div class="feat">
-          <div class="k">Durable</div>
-          <h3>Survives restarts</h3>
-          <p>Approvals and one-time consumption persist to disk, so state is never lost.</p>
-        </div>
+        <div class="feat" data-reveal style="--i:0"><div class="k">Single-use</div><h3>No double-spend</h3><p>Each approval mints one proof that is consumed exactly once. Replays are refused.</p></div>
+        <div class="feat" data-reveal style="--i:1"><div class="k">Bound</div><h3>What's approved is what runs</h3><p>The proof binds to the exact parameters. Approve $10, try to run $10,000 — blocked.</p></div>
+        <div class="feat danger" data-reveal style="--i:2"><div class="k">Fail-closed</div><h3>Never a silent yes</h3><p>Expired, tampered, or the authority unreachable — the action stays unexecuted.</p></div>
+        <div class="feat" data-reveal style="--i:3"><div class="k">Durable</div><h3>Survives restarts</h3><p>Approvals and one-time consumption persist to disk, so state is never lost.</p></div>
       </div>
     </section>
 
-    <section>
-      <div class="section-label">The approval console</div>
-      <div class="preview">
-        <img src="/console-preview.png" alt="Interlock approval console showing pending and approved agent actions" />
-        <div class="cap">A human reviews each pending action and approves it with a passkey · live at /console</div>
+    <section class="final" data-reveal>
+      <h2>Give your agents autonomy without handing over the keys.</h2>
+      <p>Run the console locally, register a passkey, and approve your first agent action in under a minute.</p>
+      <div class="cta">
+        <a class="btn btn-dark" href="/console">Launch the console <span class="a">→</span></a>
+        <a class="btn btn-ghost" href="https://github.com/Meraj-08/interlock" target="_blank" rel="noopener">Read the code ↗</a>
       </div>
     </section>
   </div>
 
   <footer>
     <div class="wrap foot">
-      <span>🔒 Interlock — check the seal before you act.</span>
+      <span class="logo"><img src="/logo.svg" alt="" style="width:24px;height:auto" /> Interlock — check the seal before you act.</span>
       <span><a href="https://github.com/Meraj-08/interlock" target="_blank" rel="noopener">github.com/Meraj-08/interlock</a></span>
     </div>
   </footer>
+
+  <script>
+    // Scroll reveal
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    document.querySelectorAll('[data-reveal]').forEach((el) => io.observe(el));
+
+    // Scroll progress bar + sticky nav state (rAF-throttled)
+    const bar = document.getElementById('progress');
+    const navbar = document.getElementById('navbar');
+    let ticking = false;
+    function onScroll() {
+      const h = document.documentElement;
+      const max = h.scrollHeight - h.clientHeight;
+      const p = max > 0 ? h.scrollTop / max : 0;
+      bar.style.transform = `scaleX(${p})`;
+      navbar.classList.toggle('scrolled', h.scrollTop > 8);
+      ticking = false;
+    }
+    document.addEventListener('scroll', () => { if (!ticking) { requestAnimationFrame(onScroll); ticking = true; } }, { passive: true });
+    onScroll();
+  </script>
+
+  <script>
+  // Modern enhancements: GLSL shader background, 3D tilt, cursor spotlight.
+  (function () {
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) return;
+
+    // --- cursor spotlight (hero region only) ---
+    const spot = document.getElementById('spotlight');
+    const heroBottom = () => (document.querySelector('.preview-wrap')?.offsetTop || 900);
+    window.addEventListener('pointermove', (e) => {
+      spot.style.left = e.clientX + 'px';
+      spot.style.top = e.clientY + 'px';
+      const inHero = (e.clientY + window.scrollY) < heroBottom();
+      spot.style.opacity = inHero ? '1' : '0';
+    }, { passive: true });
+
+    // --- 3D tilt on the product panel ---
+    const tilt = document.getElementById('tilt');
+    if (tilt) {
+      const wrap = tilt.closest('.preview-wrap');
+      wrap.addEventListener('pointermove', (e) => {
+        const r = wrap.getBoundingClientRect();
+        const px = (e.clientX - r.left) / r.width - 0.5;
+        const py = (e.clientY - r.top) / r.height - 0.5;
+        tilt.style.transform = `rotateY(${px * 7}deg) rotateX(${-py * 6}deg)`;
+      });
+      wrap.addEventListener('pointerleave', () => { tilt.style.transform = 'rotateX(0) rotateY(0)'; });
+    }
+
+    // --- mockup: loop a critical action through pending -> verifying -> approved ---
+    const mockCard = document.getElementById('mockCard');
+    if (mockCard) {
+      const state = document.getElementById('mockState');
+      const foot = document.getElementById('mockFoot');
+      const jti = document.getElementById('mockJti');
+      const pendingFoot = foot.innerHTML;
+      const run = () => {
+        mockCard.classList.remove('ok'); mockCard.classList.add('crit');
+        state.textContent = 'PENDING'; state.classList.remove('done');
+        jti.textContent = '· jti —';
+        foot.innerHTML = pendingFoot;
+        setTimeout(() => {
+          const app = foot.querySelector('.cbtn.app');
+          if (app) { app.classList.add('busy'); app.innerHTML = '<span class="cspin"></span> Verifying passkey…'; }
+        }, 2400);
+        setTimeout(() => {
+          mockCard.classList.remove('crit'); mockCard.classList.add('ok');
+          state.textContent = 'APPROVED'; state.classList.add('done');
+          jti.textContent = '· jti proof_ZWNkZGRi…';
+          foot.innerHTML = '<div class="cnote">✓ Approved by ops-console · single-use proof issued · consumed once</div>';
+        }, 3700);
+        setTimeout(run, 7400);
+      };
+      run();
+    }
+
+    // --- GLSL shader background (raw WebGL, no dependencies) ---
+    const canvas = document.getElementById('gl');
+    const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false });
+    if (!gl) return; // keep the CSS .aurora fallback
+
+    const VS = 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }';
+    const FS = [
+      'precision highp float;',
+      'uniform vec2 uRes; uniform float uTime; uniform vec2 uMouse;',
+      'float h(vec2 i){ return fract(sin(dot(i, vec2(127.1,311.7))) * 43758.5453); }',
+      'float vnoise(vec2 p){',
+      '  vec2 i=floor(p), f=fract(p);',
+      '  float a=h(i), b=h(i+vec2(1,0)), c=h(i+vec2(0,1)), d=h(i+vec2(1,1));',
+      '  vec2 u=f*f*(3.0-2.0*f);',
+      '  return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);',
+      '}',
+      'float fbm(vec2 p){ float v=0.0, a=0.5; for(int i=0;i<5;i++){ v+=a*vnoise(p); p*=2.0; a*=0.5; } return v; }',
+      'void main(){',
+      '  vec2 uv = gl_FragCoord.xy / uRes.xy;',
+      '  vec2 p = uv * vec2(uRes.x/uRes.y, 1.0);',
+      '  float t = uTime * 0.045;',
+      '  vec2 q = vec2(fbm(p + t), fbm(p + vec2(3.2,1.7) - t));',
+      '  vec2 r = vec2(fbm(p + 1.8*q + vec2(1.7,9.2) + 0.15*t), fbm(p + 1.8*q + vec2(8.3,2.8) - 0.12*t));',
+      '  float f = fbm(p + 2.4*r);',
+      '  vec3 base = vec3(0.968,0.960,0.937);',
+      '  vec3 green = vec3(0.047,0.651,0.471);',
+      '  vec3 rose  = vec3(0.882,0.113,0.388);',
+      '  vec3 teal  = vec3(0.208,0.839,0.643);',
+      '  vec3 col = base;',
+      '  col = mix(col, teal,  smoothstep(0.35,0.95,f) * 0.30);',
+      '  col = mix(col, green, smoothstep(0.50,1.00,r.x) * 0.24);',
+      '  col = mix(col, rose,  smoothstep(0.60,1.00,q.y) * 0.16);',
+      '  float md = distance(uv, uMouse);',
+      '  col = mix(col, teal, smoothstep(0.32, 0.0, md) * 0.14);',
+      '  gl_FragColor = vec4(col, 1.0);',
+      '}',
+    ].join('\n');
+
+    function compile(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.warn(gl.getShaderInfoLog(s)); return null; }
+      return s;
+    }
+    const prog = gl.createProgram();
+    const vs = compile(gl.VERTEX_SHADER, VS), fs = compile(gl.FRAGMENT_SHADER, FS);
+    if (!vs || !fs) return;
+    gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
+    gl.useProgram(prog);
+
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+    const uRes = gl.getUniformLocation(prog, 'uRes');
+    const uTime = gl.getUniformLocation(prog, 'uTime');
+    const uMouse = gl.getUniformLocation(prog, 'uMouse');
+    const mouse = { x: 0.5, y: 0.6 };
+    window.addEventListener('pointermove', (e) => {
+      const r = canvas.getBoundingClientRect();
+      mouse.x = (e.clientX - r.left) / r.width;
+      mouse.y = 1.0 - (e.clientY - r.top) / r.height;
+    }, { passive: true });
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      const w = Math.floor(canvas.clientWidth * dpr), h = Math.floor(canvas.clientHeight * dpr);
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; gl.viewport(0, 0, w, h); }
+    }
+    window.addEventListener('resize', resize);
+
+    // Only render while the shader region is on screen.
+    let visible = true;
+    new IntersectionObserver((es) => { visible = es[0].isIntersecting; }, { threshold: 0 })
+      .observe(document.querySelector('.gl-bg'));
+
+    document.body.classList.add('gl-on'); // hide the CSS fallback
+    const start = performance.now();
+    function frame(now) {
+      if (visible && !document.hidden && !window.__ilPause) {
+        resize();
+        gl.uniform2f(uRes, canvas.width, canvas.height);
+        gl.uniform1f(uTime, (now - start) / 1000);
+        gl.uniform2f(uMouse, mouse.x, mouse.y);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
+  </script>
 </body>
 </html>
