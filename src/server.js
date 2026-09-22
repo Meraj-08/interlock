@@ -8,7 +8,12 @@ import { RiskPolicy } from './policy.js';
 import { WebAuthnApprover } from './webauthn.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CONSOLE_HTML = join(__dirname, '..', 'public', 'console.html');
+const PUBLIC_DIR = join(__dirname, '..', 'public');
+const CONTENT_TYPES = {
+  html: 'text/html; charset=utf-8', css: 'text/css', js: 'text/javascript',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', svg: 'image/svg+xml',
+  ico: 'image/x-icon', webp: 'image/webp',
+};
 
 /**
  * InterlockServer — turns the Interlock library into a runnable HTTP service:
@@ -65,8 +70,15 @@ export class InterlockServer {
       const path = url.pathname;
       const method = req.method || 'GET';
 
-      if (method === 'GET' && (path === '/' || path === '/console')) {
-        return this._serveConsole(res);
+      if (method === 'GET' && path === '/') {
+        return this._serveFile(res, 'index.html');
+      }
+      if (method === 'GET' && path === '/console') {
+        return this._serveFile(res, 'console.html');
+      }
+      // Static assets (images/css/js) from public/, basename-only (no traversal).
+      if (method === 'GET' && /^\/[\w.-]+\.(png|jpe?g|svg|ico|css|js|webp)$/.test(path)) {
+        return this._serveFile(res, path.slice(1));
       }
       if (method === 'POST' && path === '/api/propose') {
         const body = await readBody(req);
@@ -140,14 +152,17 @@ export class InterlockServer {
     }
   }
 
-  async _serveConsole(res) {
+  /** Serve a file from the public directory by basename. */
+  async _serveFile(res, name) {
+    const base = name.split('/').pop(); // defensive: strip any path
+    const ext = base.includes('.') ? base.split('.').pop().toLowerCase() : '';
     try {
-      const html = await readFile(CONSOLE_HTML, 'utf8');
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      res.end(html);
+      const buf = await readFile(join(PUBLIC_DIR, base));
+      res.writeHead(200, { 'content-type': CONTENT_TYPES[ext] || 'application/octet-stream' });
+      res.end(buf);
     } catch {
-      res.writeHead(500);
-      res.end('console unavailable');
+      res.writeHead(404, { 'content-type': 'text/plain' });
+      res.end('not found');
     }
   }
 }

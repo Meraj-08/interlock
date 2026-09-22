@@ -61,10 +61,11 @@ npm run demo    # narrated offline walkthrough (refunds, approval, tamper, deny)
 ## Run it as a service (HTTP API + approval console)
 
 ```bash
-npm run serve   # starts the server + web console on http://localhost:4000
+npm run serve   # starts the server on http://localhost:4000
 ```
 
-Open **http://localhost:4000/console** — a human registers a **passkey** once,
+Open **http://localhost:4000/** for the landing page, or go straight to the
+console at **http://localhost:4000/console** — a human registers a **passkey** once,
 then approves each pending action with a real **WebAuthn** ceremony (Touch ID /
 security key). Only after the assertion verifies does the authority mint the
 single-use proof. State is persisted to `data/interlock.json` (a `FileStore`),

@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Interlock — a human circuit-breaker for risky AI-agent actions</title>
+  <meta name="description" content="Interlock is a human-in-the-loop circuit breaker for high-risk AI-agent actions: propose, risk-triage, passkey approval, single-use proof, execute exactly once." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0b0d; --panel: #121418; --panel-2: #0d0f12; --line: #20242b;
+      --fg: #eef1f5; --muted: #868f9b; --soft: #5b636d;
+      --accent: #3ee0a0; --accent-dim: #164034; --rose: #f2607e; --amber: #f2c15a;
+      --chip: #171a1f;
+      --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      --display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font-family: var(--display); line-height: 1.55; -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 0 20px; }
+    .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: var(--soft); }
+
+    /* status bar */
+    .statusbar {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel-2);
+      font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+    }
+    .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(62,224,160,.5); animation: pulse 2.4s infinite; }
+    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(62,224,160,.45)} 70%{box-shadow:0 0 0 6px rgba(62,224,160,0)} 100%{box-shadow:0 0 0 0 rgba(62,224,160,0)} }
+
+    /* nav */
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
+    .brand { font-weight: 700; font-size: 18px; letter-spacing: -.02em; display: flex; align-items: center; gap: 8px; }
+    .nav-links { display: flex; align-items: center; gap: 22px; }
+    .nav-links a.mut { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+    .nav-links a.mut:hover { color: var(--fg); }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px; border-radius: 10px; padding: 10px 18px;
+      font-family: var(--display); font-weight: 600; font-size: 14px; cursor: pointer; border: 1px solid transparent;
+      transition: transform .12s ease, opacity .15s ease, border-color .15s ease, background .15s ease;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent); color: #05231a; }
+    .btn-primary:hover { opacity: .92; }
+    .btn-ghost { background: transparent; color: var(--fg); border-color: var(--line); }
+    .btn-ghost:hover { border-color: #333c46; }
+    .btn-sm { padding: 8px 14px; font-size: 13px; }
+
+    /* hero */
+    .hero { padding: 64px 0 40px; }
+    .hero h1 {
+      font-size: clamp(38px, 6vw, 62px); line-height: 1.02; letter-spacing: -.03em; font-weight: 700;
+      margin: 16px 0 0; max-width: 15ch;
+    }
+    .hero h1 .rose { color: var(--rose); }
+    .hero p.sub { color: var(--muted); font-size: clamp(16px, 2.4vw, 19px); max-width: 56ch; margin: 20px 0 0; }
+    .hero .cta { display: flex; gap: 12px; margin-top: 30px; flex-wrap: wrap; }
+    .backed { margin-top: 26px; font-family: var(--mono); font-size: 11px; color: var(--soft); letter-spacing: .06em; }
+    .backed b { color: var(--muted); font-weight: 500; }
+
+    section { padding: 40px 0; border-top: 1px solid var(--line); }
+    .section-label { font-family: var(--mono); font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--soft); margin-bottom: 22px; }
+
+    /* flow steps */
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; position: relative; }
+    .step .n { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .1em; }
+    .step h3 { margin: 10px 0 6px; font-size: 16px; letter-spacing: -.01em; }
+    .step p { margin: 0; color: var(--muted); font-size: 13.5px; }
+    .step .arrow { position: absolute; right: -11px; top: 50%; transform: translateY(-50%); color: var(--soft); z-index: 2; font-family: var(--mono); }
+    .step:last-child .arrow { display: none; }
+
+    /* guarantees */
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .feat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+    .feat .k { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+    .feat h3 { margin: 8px 0 6px; font-size: 16px; }
+    .feat p { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+    /* preview */
+    .preview { position: relative; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--panel-2); }
+    .preview::before { content: ""; position: absolute; inset: -40% 20% auto; height: 260px;
+      background: radial-gradient(closest-side, rgba(62,224,160,.16), transparent); pointer-events: none; }
+    .preview img { display: block; width: 100%; height: auto; }
+    .preview .cap { font-family: var(--mono); font-size: 11px; color: var(--soft); padding: 12px 16px; border-top: 1px solid var(--line); letter-spacing: .04em; }
+
+    /* footer */
+    footer { border-top: 1px solid var(--line); padding: 28px 0 48px; }
+    .foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+      font-family: var(--mono); font-size: 12px; color: var(--soft); }
+    .foot a:hover { color: var(--fg); }
+
+    @media (max-width: 720px) {
+      .steps { grid-template-columns: 1fr 1fr; }
+      .step .arrow { display: none; }
+      .grid { grid-template-columns: 1fr; }
+      .nav-links a.mut { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="statusbar">
+    <span class="dot"></span>
+    <span>Interlock · human-in-the-loop for AI agents</span>
+  </div>
+
+  <div class="wrap">
+    <nav>
+      <div class="brand">🔒 Interlock</div>
+      <div class="nav-links">
+        <a class="mut" href="#how">How it works</a>
+        <a class="mut" href="#guarantees">Guarantees</a>
+        <a class="mut" href="https://github.com/Meraj-08/interlock" target="_blank" rel="noopener">GitHub</a>
+        <a class="btn btn-primary btn-sm" href="/console">Launch console →</a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <div class="eyebrow">▪ A circuit-breaker for risky agent actions</div>
+      <h1>Agents move fast. Humans hold the keys to the <span class="rose">irreversible</span>.</h1>
+      <p class="sub">
+        Interlock sits at the execution boundary of your AI agents. When an action is
+        high-stakes — moving money, changing a payout account, deleting data — it pauses,
+        asks a human to approve the exact action with a passkey, and only then lets the
+        agent run it, exactly once.
+      </p>
+      <div class="cta">
+        <a class="btn btn-primary" href="/console">Launch the console →</a>
+        <a class="btn btn-ghost" href="https://github.com/Meraj-08/interlock" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+      <div class="backed">Built on the <b>Signet</b> Proof-of-Agency verifier · ES256 · verify → consume-once → fail-closed</div>
+    </header>
+
+    <section id="how">
+      <div class="section-label">How it works</div>
+      <div class="steps">
+        <div class="step">
+          <div class="n">01</div><h3>Propose</h3>
+          <p>The agent proposes an action with its exact parameters, on behalf of a user.</p>
+          <span class="arrow">→</span>
+        </div>
+        <div class="step">
+          <div class="n">02</div><h3>Triage</h3>
+          <p>A risk policy decides: auto-allow, needs a human, or deny outright.</p>
+          <span class="arrow">→</span>
+        </div>
+        <div class="step">
+          <div class="n">03</div><h3>Approve</h3>
+          <p>A human reviews the exact action and approves it with a WebAuthn passkey.</p>
+          <span class="arrow">→</span>
+        </div>
+        <div class="step">
+          <div class="n">04</div><h3>Execute once</h3>
+          <p>A single-use signed proof lets the agent run the action — exactly one time.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="guarantees">
+      <div class="section-label">Guarantees</div>
+      <div class="grid">
+        <div class="feat">
+          <div class="k">Single-use</div>
+          <h3>No double-spend</h3>
+          <p>Each approval mints one proof that is consumed exactly once. Replays are refused.</p>
+        </div>
+        <div class="feat">
+          <div class="k">Bound</div>
+          <h3>What's approved is what runs</h3>
+          <p>The proof binds to the exact parameters. Approve $10, try to run $10,000 — blocked.</p>
+        </div>
+        <div class="feat">
+          <div class="k">Fail-closed</div>
+          <h3>Never a silent yes</h3>
+          <p>If anything is off — expired, tampered, or the authority is unreachable — it refuses.</p>
+        </div>
+        <div class="feat">
+          <div class="k">Durable</div>
+          <h3>Survives restarts</h3>
+          <p>Approvals and one-time consumption persist to disk, so state is never lost.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">The approval console</div>
+      <div class="preview">
+        <img src="/console-preview.png" alt="Interlock approval console showing pending and approved agent actions" />
+        <div class="cap">A human reviews each pending action and approves it with a passkey · live at /console</div>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <div class="wrap foot">
+      <span>🔒 Interlock — check the seal before you act.</span>
+      <span><a href="https://github.com/Meraj-08/interlock" target="_blank" rel="noopener">github.com/Meraj-08/interlock</a></span>
+    </div>
+  </footer>
+</body>
+</html>
