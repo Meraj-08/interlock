@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Interlock — Approval Console</title>
+  <style>
+    :root {
+      --bg: #0b0d10; --panel: #14181d; --line: #232a31; --fg: #e7edf3;
+      --muted: #8b97a3; --accent: #34d399; --danger: #f87171; --chip: #1c232a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    header {
+      padding: 20px 24px; border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    header h1 { font-size: 16px; margin: 0; letter-spacing: .3px; }
+    header .sub { color: var(--muted); font-size: 12px; }
+    .approver { display: flex; align-items: center; gap: 8px; }
+    .approver input {
+      background: var(--chip); border: 1px solid var(--line); color: var(--fg);
+      border-radius: 8px; padding: 6px 10px; font-size: 13px; width: 160px;
+    }
+    main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+    .empty { color: var(--muted); text-align: center; padding: 48px 0; }
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+      padding: 16px 18px; margin-bottom: 14px;
+    }
+    .card.pending { border-color: #3a4550; }
+    .row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .action { font-size: 15px; font-weight: 600; }
+    .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .params {
+      margin: 12px 0; padding: 10px 12px; background: #0e1216; border: 1px solid var(--line);
+      border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px; color: #cdd6df; white-space: pre-wrap; word-break: break-word;
+    }
+    .consequence { color: #f0c674; font-size: 13px; margin: 8px 0; }
+    .hash { color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; }
+    .badge {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .6px; padding: 3px 8px;
+      border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+    }
+    .badge.approved { color: var(--accent); border-color: #1f5f45; }
+    .badge.denied { color: var(--danger); border-color: #6b2b2b; }
+    .badge.pending { color: #f0c674; border-color: #6b5a2b; }
+    .actions { display: flex; gap: 10px; margin-top: 14px; }
+    button {
+      border: 0; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: transform .1s ease, opacity .1s ease;
+    }
+    button:active { transform: translateY(1px); }
+    .approve { background: var(--accent); color: #06231a; }
+    .deny { background: transparent; color: var(--danger); border: 1px solid #6b2b2b; }
+    .approved-note { color: var(--accent); font-size: 12px; margin-top: 6px; }
+    .denied-note { color: var(--danger); font-size: 12px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>🔒 Interlock — Approval Console</h1>
+      <div class="sub">A human circuit-breaker for risky agent actions</div>
+    </div>
+    <div class="approver">
+      <span class="sub">Approver</span>
+      <input id="approver" value="ops-console" />
+    </div>
+  </header>
+  <main>
+    <div id="list"><div class="empty">Loading…</div></div>
+  </main>
+
+  <script>
+    const listEl = document.getElementById('list');
+    const approverEl = document.getElementById('approver');
+
+    function esc(s) {
+      return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    function card(p) {
+      const badge = `<span class="badge ${p.state}">${p.state}</span>`;
+      const params = `<div class="params">${esc(JSON.stringify(p.params ?? {}, null, 2))}</div>`;
+      const consequence = p.consequence ? `<div class="consequence">⚠ ${esc(p.consequence)}</div>` : '';
+      const hash = `<div class="hash">action_hash ${esc((p.action_hash || '').slice(0, 32))}…</div>`;
+      let footer = '';
+      if (p.state === 'pending') {
+        footer = `<div class="actions">
+          <button class="approve" onclick="approve('${p.id}')">Approve with passkey</button>
+          <button class="deny" onclick="deny('${p.id}')">Deny</button>
+        </div>`;
+      } else if (p.state === 'approved') {
+        footer = `<div class="approved-note">✓ Approved by ${esc(p.approver || '')} · single-use proof issued</div>`;
+      } else if (p.state === 'denied') {
+        footer = `<div class="denied-note">✕ Denied by ${esc(p.approver || '')}</div>`;
+      }
+      return `<div class="card ${p.state}">
+        <div class="row"><div class="action">${esc(p.action)}</div>${badge}</div>
+        <div class="meta">${esc(p.agent)} on behalf of ${esc(p.onBehalfOf)}</div>
+        ${consequence}${params}${hash}${footer}
+      </div>`;
+    }
+
+    async function refresh() {
+      try {
+        const res = await fetch('/api/proposals');
+        const items = await res.json();
+        listEl.innerHTML = items.length
+          ? items.map(card).join('')
+          : '<div class="empty">No proposals yet. Agents will appear here when they request a risky action.</div>';
+      } catch {
+        listEl.innerHTML = '<div class="empty">Cannot reach the server.</div>';
+      }
+    }
+
+    async function approve(id) {
+      await fetch(`/api/proposals/${id}/approve`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ approver: approverEl.value || 'ops-console', method: 'passkey' }),
+      });
+      refresh();
+    }
+
+    async function deny(id) {
+      await fetch(`/api/proposals/${id}/deny`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ approver: approverEl.value || 'ops-console' }),
+      });
+      refresh();
+    }
+
+    window.approve = approve;
+    window.deny = deny;
+    refresh();
+    setInterval(refresh, 2000);
+  </script>
+</body>
+</html>

@@ -54,11 +54,34 @@ guard.execute(id, fn) ──▶ Signet core: verify proof (signature + bindings)
 
 ```bash
 npm install
-npm test        # 26 tests: 7 Interlock (this loop) + 19 Signet core (every reason)
+npm test        # 29 tests: the loop, HTTP end-to-end, restart durability, + 19 Signet-core reasons
 npm run demo    # narrated offline walkthrough (refunds, approval, tamper, deny)
 ```
 
-## Use it
+## Run it as a service (HTTP API + approval console)
+
+```bash
+npm run serve   # starts the server + web console on http://localhost:4000
+```
+
+Open **http://localhost:4000/console** — a human reviews each pending action and
+approves it with one click (a passkey ceremony in the full build). State is
+persisted to `data/interlock.json` (a `FileStore`), so approvals and one-time
+consumption survive a restart.
+
+![Interlock approval console](docs/console.png)
+
+The JSON API:
+
+| Method & path | Who | Does |
+|---|---|---|
+| `POST /api/propose` | agent | policy decision (+ `approvalId`) |
+| `POST /api/proposals/:id/execute` | agent | verify + consume once → go / no-go |
+| `GET /api/proposals` | console | list, newest first |
+| `POST /api/proposals/:id/approve` | human | approve → mints the single-use proof |
+| `POST /api/proposals/:id/deny` | human | deny |
+
+## Use it as a library
 
 ```js
 import { ApprovalAuthority, Guard, RiskPolicy } from 'interlock';
@@ -124,13 +147,20 @@ proofs. To move the proof authority to a real service, point the Signet core's
 
 ## Honest limitations
 
+- The approval "passkey" step is modeled as a method label; a real WebAuthn
+  ceremony is the next step (see roadmap).
 - The canonical action hash uses a documented, deterministic form applied
   identically on both sides; swap in a provider's official hasher for live use.
-- The approval "passkey" step is modeled as a method label here; wire it to a
-  real WebAuthn ceremony in production.
-- Proof state and replay tracking are in-memory; back them with a shared store
-  for multi-process deployments. The one-time online consume remains the real
-  single-use boundary.
+- `FileStore` is single-process durable; for multiple workers back the store
+  with Redis/Postgres. The one-time online consume remains the real single-use
+  boundary regardless.
+
+## Roadmap
+
+- [x] Durable storage (`MemoryStore` / `FileStore`, restart-safe)
+- [x] HTTP service + web approval console
+- [ ] Real WebAuthn passkey approval ceremony
+- [ ] Redis/Postgres store adapter for multi-process deployments
 
 ## Layout
 
@@ -139,13 +169,20 @@ src/
   policy.js          # RiskPolicy: auto_allow / require_approval / deny
   authority.js       # ApprovalAuthority: proposal lifecycle + proof minting
   guard.js           # Guard: execution boundary, exactly-once, fail-closed
+  store.js           # MemoryStore / FileStore: durable, restart-safe state
+  server.js          # InterlockServer: HTTP API + serves the console
   verifier.js        # Signet: two-phase, fail-closed composer
   verify-offline.js  # Signet: offline crypto + all claim bindings
   online.js          # Signet: online verify + one-time consume
   jwks.js  replay.js  reasons.js  action-hash.js
-  mock/server.js     # in-memory authority signer + fetch-compatible API
+  mock/server.js     # authority signer + fetch-compatible API (persists key + proofs)
+bin/serve.js         # `npm run serve` entry point
+public/console.html  # the human approval console UI
 test/
-  hitl.test.js       # the human-in-the-loop loop
-  verify.test.js     # the Signet core: one test per refusal reason
-examples/demo.js     # narrated offline walkthrough
+  hitl.test.js         # the human-in-the-loop loop
+  server.test.js       # HTTP end-to-end (propose -> approve -> execute)
+  persistence.test.js  # state survives a restart (FileStore)
+  verify.test.js       # the Signet core: one test per refusal reason
+examples/demo.js       # narrated offline walkthrough
+docs/console.png       # console screenshot
 ```

@@ -73,7 +73,7 @@ test('denied by policy -> never executable', async () => {
 test('human deny stops execution', async () => {
   const { authority, guard } = await setup();
   const decision = await guard.propose(refund(9000));
-  authority.deny(decision.approvalId, { approver: 'ops_bob', reason: 'suspicious' });
+  await authority.deny(decision.approvalId, { approver: 'ops_bob', reason: 'suspicious' });
   const r = await guard.execute(decision.approvalId, () => 'boom');
   assert.equal(r.executed, false);
   assert.equal(r.reason, 'denied');

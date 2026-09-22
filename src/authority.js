@@ -1,6 +1,7 @@
 import { MockGrayPass } from './mock/server.js';
 import { actionHash } from './action-hash.js';
 import { RiskPolicy } from './policy.js';
+import { MemoryStore, namespaced } from './store.js';
 import { randomUUID } from 'node:crypto';
 
 /**
@@ -33,14 +34,17 @@ export class ApprovalAuthority {
   static async create(opts = {}) {
     const a = new ApprovalAuthority();
     a.policy = opts.policy ?? RiskPolicy.default();
-    a.signer = await MockGrayPass.create({ proofTtlSeconds: opts.approvalTtlSeconds ?? 300 });
+    a.store = opts.store ?? new MemoryStore();
+    a.signer = await MockGrayPass.create({
+      proofTtlSeconds: opts.approvalTtlSeconds ?? 300,
+      store: namespaced(a.store, 'signer:'),
+    });
     a.environment = a.signer.environment;
     a.environmentKind = a.signer.environmentKind;
     a.tenant = a.signer.tenant;
     a.issuer = a.signer.issuer;
     a.audience = opts.audience ?? 'agent-actions';
-    /** @type {Map<string, Proposal>} */
-    a.proposals = new Map();
+    a.proposalStore = namespaced(a.store, 'proposal:');
     a.fetchImpl = a.signer.fetchImpl; // Guard verifies/consumes against the signer.
     return a;
   }
@@ -85,24 +89,23 @@ export class ApprovalAuthority {
 
     if (decision.outcome === 'deny') {
       proposal.state = 'denied';
-      this.proposals.set(id, proposal);
+      await this.proposalStore.set(id, proposal);
       return { outcome: 'deny', rule: decision.rule, reason: decision.reason };
     }
 
     if (decision.outcome === 'auto_allow') {
       await this._mint(proposal, { approver: 'policy:auto', method: 'auto' });
-      this.proposals.set(id, proposal);
       return { outcome: 'auto_allow', rule: decision.rule, reason: decision.reason, approvalId: id };
     }
 
     // require_approval: hold for a human. Expose an immutable review card.
-    this.proposals.set(id, proposal);
+    await this.proposalStore.set(id, proposal);
     return {
       outcome: 'needs_approval',
       rule: decision.rule,
       reason: decision.reason,
       approvalId: id,
-      review: this.reviewCard(id),
+      review: this._card(proposal),
     };
   }
 
@@ -113,7 +116,7 @@ export class ApprovalAuthority {
    * @param {{approver: string, method?: 'passkey'|'click'}} by
    */
   async approve(id, by) {
-    const proposal = this.proposals.get(id);
+    const proposal = await this.get(id);
     if (!proposal) throw new Error('unknown approval');
     if (proposal.state === 'approved') return this.receipt(proposal); // idempotent
     if (proposal.state !== 'pending') throw new Error(`cannot approve a ${proposal.state} proposal`);
@@ -122,19 +125,26 @@ export class ApprovalAuthority {
   }
 
   /** A human denies a pending proposal. */
-  deny(id, by = {}) {
-    const proposal = this.proposals.get(id);
+  async deny(id, by = {}) {
+    const proposal = await this.get(id);
     if (!proposal) throw new Error('unknown approval');
     if (proposal.state !== 'pending') throw new Error(`cannot deny a ${proposal.state} proposal`);
     proposal.state = 'denied';
     proposal.approver = by.approver ?? 'human';
     proposal.denyReason = by.reason ?? '';
+    await this.proposalStore.set(id, proposal);
     return { id, state: 'denied' };
   }
 
-  /** @param {string} id @returns {Proposal|undefined} */
-  get(id) {
-    return this.proposals.get(id);
+  /** @param {string} id @returns {Promise<Proposal|null>} */
+  async get(id) {
+    return this.proposalStore.get(id);
+  }
+
+  /** All proposals, newest first — used by the console/service. */
+  async list() {
+    const all = await this.proposalStore.values();
+    return all.sort((x, y) => y.createdAt - x.createdAt);
   }
 
   /**
@@ -142,9 +152,13 @@ export class ApprovalAuthority {
    * approves THIS exact card; the proof binds to its hash, so an agent cannot
    * approve one thing and execute another.
    */
-  reviewCard(id) {
-    const p = this.proposals.get(id);
-    if (!p) return null;
+  async reviewCard(id) {
+    const p = await this.get(id);
+    return p ? this._card(p) : null;
+  }
+
+  /** Build a review card from a proposal object. */
+  _card(p) {
     return {
       approvalId: p.id,
       agent: p.agent,
@@ -175,6 +189,7 @@ export class ApprovalAuthority {
     proposal.state = 'approved';
     proposal.approver = by.approver;
     proposal.method = by.method;
+    await this.proposalStore.set(proposal.id, proposal);
   }
 
   _request(p) {

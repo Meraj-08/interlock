@@ -1,5 +1,6 @@
-import { generateKeyPair, exportJWK, SignJWT, base64url } from 'jose';
+import { generateKeyPair, exportJWK, importJWK, SignJWT, base64url } from 'jose';
 import { randomUUID, createHash } from 'node:crypto';
+import { MemoryStore, namespaced } from '../store.js';
 
 /**
  * In-memory mock of the GrayPass proof surface, for offline development, demos,
@@ -20,6 +21,9 @@ export class MockGrayPass {
    * @param {string} [opts.environment]  Default 'env_sandbox'
    * @param {'sandbox'|'live'} [opts.environmentKind] Default 'sandbox'
    * @param {number} [opts.proofTtlSeconds] Default 300 (their action default).
+   * @param {MemoryStore} [opts.store] Durable store. Default in-memory. When a
+   *   persistent store is supplied, the signing key and proof state survive
+   *   restarts (so previously issued proofs still verify and stay consumed).
    */
   static async create(opts = {}) {
     const m = new MockGrayPass();
@@ -30,12 +34,22 @@ export class MockGrayPass {
     m.environmentKind = opts.environmentKind ?? 'sandbox';
     m.proofTtl = opts.proofTtlSeconds ?? 300;
 
-    const { publicKey, privateKey } = await generateKeyPair('ES256');
-    m.kid = 'gpk_' + base64url.encode(randomUUID()).slice(0, 12);
-    m._priv = privateKey;
-    m._pubJwk = { ...(await exportJWK(publicKey)), kid: m.kid, alg: 'ES256', use: 'sig' };
-    /** @type {Map<string, {status: string, exp: number}>} */
-    m._proofs = new Map();
+    m.store = opts.store ?? new MemoryStore();
+    m.proofs = namespaced(m.store, 'proof:');
+
+    const saved = await m.store.get('signer_key');
+    if (saved) {
+      // Restore the persisted signing key so old proofs remain verifiable.
+      m.kid = saved.kid;
+      m._priv = await importJWK(saved.privateJwk, 'ES256');
+      m._pubJwk = saved.pubJwk;
+    } else {
+      const { publicKey, privateKey } = await generateKeyPair('ES256', { extractable: true });
+      m.kid = 'gpk_' + base64url.encode(randomUUID()).slice(0, 12);
+      m._priv = privateKey;
+      m._pubJwk = { ...(await exportJWK(publicKey)), kid: m.kid, alg: 'ES256', use: 'sig' };
+      await m.store.set('signer_key', { kid: m.kid, privateJwk: await exportJWK(privateKey), pubJwk: m._pubJwk });
+    }
     m.fetchImpl = m.fetchImpl.bind(m);
     return m;
   }
@@ -96,15 +110,15 @@ export class MockGrayPass {
 
     // Track state as the authoritative server would (only clean proofs stored).
     if (!overrides.tamper && !overrides.alg && !overrides.kid) {
-      this._proofs.set(jti, { status: 'active', exp });
+      await this.proofs.set(jti, { status: 'active', exp });
     }
     return { proof, jti };
   }
 
   /** Force a proof into a given state (revoked/expired/consumed) for demos. */
-  setProofState(jti, status) {
-    const rec = this._proofs.get(jti);
-    if (rec) rec.status = status;
+  async setProofState(jti, status) {
+    const rec = await this.proofs.get(jti);
+    if (rec) { rec.status = status; await this.proofs.set(jti, rec); }
   }
 
   // --- fetch-compatible router -------------------------------------------
@@ -121,13 +135,13 @@ export class MockGrayPass {
     }
     const statusMatch = path.match(/^\/api\/v1\/proofs\/([^/]+)\/status$/);
     if (statusMatch) {
-      return json(200, this._status(decodeURIComponent(statusMatch[1])));
+      return json(200, await this._status(decodeURIComponent(statusMatch[1])));
     }
     return json(404, { type: 'about:blank', title: 'Not Found', status: 404 });
   }
 
-  _status(jti) {
-    const rec = this._proofs.get(jti);
+  async _status(jti) {
+    const rec = await this.proofs.get(jti);
     if (!rec) return { jti, status: 'unknown', expires_at: null, revoked_at: null };
     let status = rec.status;
     if (status === 'active' && rec.exp < Math.floor(Date.now() / 1000)) status = 'expired';
@@ -144,7 +158,7 @@ export class MockGrayPass {
     const jti = readJti(body.proof);
     if (!jti) return json(200, { valid: false, reason: 'malformed', claims: null });
 
-    const rec = this._proofs.get(jti);
+    const rec = await this.proofs.get(jti);
     if (!rec) return json(200, { valid: false, reason: 'unknown', claims: null });
 
     const now = Math.floor(Date.now() / 1000);
@@ -161,7 +175,7 @@ export class MockGrayPass {
     }
 
     // Conditional one-time consumption -- the real single-use boundary.
-    if (body.consume === true) rec.status = 'consumed';
+    if (body.consume === true) { rec.status = 'consumed'; await this.proofs.set(jti, rec); }
     return json(200, { valid: true, reason: null, claims });
   }
 }

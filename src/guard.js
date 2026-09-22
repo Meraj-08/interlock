@@ -51,7 +51,7 @@ export class Guard {
    * @returns {Promise<{executed: boolean, reason?: string, phase?: string, result?: any}>}
    */
   async execute(approvalId, fn, opts = {}) {
-    const proposal = this.authority.get(approvalId);
+    const proposal = await this.authority.get(approvalId);
     if (!proposal) return { executed: false, reason: 'unknown_approval' };
     if (proposal.state === 'pending') return { executed: false, reason: 'awaiting_approval' };
     if (proposal.state === 'denied') return { executed: false, reason: 'denied' };
