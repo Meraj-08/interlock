@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { ApprovalAuthority } from './authority.js';
 import { Guard } from './guard.js';
 import { RiskPolicy } from './policy.js';
+import { WebAuthnApprover } from './webauthn.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONSOLE_HTML = join(__dirname, '..', 'public', 'console.html');
@@ -42,6 +43,7 @@ export class InterlockServer {
       store: opts.store,
     }));
     s.guard = new Guard({ authority: s.authority });
+    s.webauthn = new WebAuthnApprover({ store: s.authority.store });
     s.server = createServer((req, res) => s._route(req, res));
     return s;
   }
@@ -74,6 +76,35 @@ export class InterlockServer {
         const list = await this.authority.list();
         return json(res, 200, list.map(publicView));
       }
+
+      // --- WebAuthn: passkey registration ---
+      if (method === 'GET' && path === '/api/webauthn/registered') {
+        const approver = url.searchParams.get('approver') || '';
+        return json(res, 200, { registered: await this.webauthn.isRegistered(approver) });
+      }
+      if (method === 'POST' && path === '/api/webauthn/register/options') {
+        const { approver } = await readBody(req);
+        return json(res, 200, await this.webauthn.registrationOptions(approver, rpID(req)));
+      }
+      if (method === 'POST' && path === '/api/webauthn/register/verify') {
+        const { approver, response } = await readBody(req);
+        return json(res, 200, await this.webauthn.verifyRegistration(approver, response, rp(req)));
+      }
+
+      // --- WebAuthn: passkey approval of a specific proposal ---
+      const wa = path.match(/^\/api\/proposals\/([^/]+)\/approve\/(options|verify)$/);
+      if (method === 'POST' && wa) {
+        const [, id, step] = wa;
+        const body = await readBody(req);
+        const approver = body.approver || 'console-user';
+        if (step === 'options') {
+          return json(res, 200, await this.webauthn.approvalOptions(approver, id, rpID(req)));
+        }
+        const { verified } = await this.webauthn.verifyApproval(approver, id, body.response, rp(req));
+        if (!verified) return json(res, 401, { error: 'passkey_verification_failed' });
+        return json(res, 200, await this.authority.approve(id, { approver, method: 'passkey' }));
+      }
+
       const m = path.match(/^\/api\/proposals\/([^/]+)(?:\/(approve|deny|execute))?$/);
       if (m) {
         const [, id, verb] = m;
@@ -136,6 +167,17 @@ function publicView(p) {
     method: p.method ?? null,
     createdAt: p.createdAt,
   };
+}
+
+/** Relying-party origin + id derived from the request's Origin header. */
+function rp(req) {
+  const origin = req.headers.origin || 'http://localhost';
+  let id = 'localhost';
+  try { id = new URL(origin).hostname; } catch { /* keep default */ }
+  return { origin, rpID: id };
+}
+function rpID(req) {
+  return rp(req).rpID;
 }
 
 function json(res, status, obj) {

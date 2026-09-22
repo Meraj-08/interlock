@@ -19,6 +19,7 @@ export { ApprovalAuthority } from './authority.js';
 export { Guard } from './guard.js';
 export { MemoryStore, FileStore, namespaced } from './store.js';
 export { InterlockServer } from './server.js';
+export { WebAuthnApprover } from './webauthn.js';
 
 // --- Signet: the verification core it is built on ---
 export { Reason, REASON_DESCRIPTIONS } from './reasons.js';

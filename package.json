@@ -11,9 +11,16 @@
     "demo": "node examples/demo.js",
     "serve": "node bin/serve.js"
   },
-  "keywords": ["graypass", "proof-of-agency", "jws", "es256", "verification"],
+  "keywords": [
+    "graypass",
+    "proof-of-agency",
+    "jws",
+    "es256",
+    "verification"
+  ],
   "license": "MIT",
   "dependencies": {
+    "@simplewebauthn/server": "^14.0.2",
     "jose": "^5.9.6"
   }
 }

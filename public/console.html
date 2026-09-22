@@ -57,6 +57,10 @@
     button:active { transform: translateY(1px); }
     .approve { background: var(--accent); color: #06231a; }
     .deny { background: transparent; color: var(--danger); border: 1px solid #6b2b2b; }
+    .register { background: var(--chip); color: var(--fg); border: 1px solid var(--line); font-size: 12px; padding: 6px 12px; }
+    .register.done { color: var(--accent); border-color: #1f5f45; }
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); color: var(--fg); padding: 10px 16px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+    .toast.show { opacity: 1; }
     .approved-note { color: var(--accent); font-size: 12px; margin-top: 6px; }
     .denied-note { color: var(--danger); font-size: 12px; margin-top: 6px; }
   </style>
@@ -70,15 +74,31 @@
     <div class="approver">
       <span class="sub">Approver</span>
       <input id="approver" value="ops-console" />
+      <button class="register" id="registerBtn" onclick="register()">Register passkey</button>
     </div>
   </header>
   <main>
     <div id="list"><div class="empty">Loading…</div></div>
   </main>
+  <div class="toast" id="toast"></div>
 
-  <script>
+  <script type="module">
+    import { startRegistration, startAuthentication }
+      from 'https://esm.sh/@simplewebauthn/browser@14';
+
     const listEl = document.getElementById('list');
     const approverEl = document.getElementById('approver');
+    const registerBtn = document.getElementById('registerBtn');
+    const toastEl = document.getElementById('toast');
+
+    function toast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      setTimeout(() => toastEl.classList.remove('show'), 2600);
+    }
+    async function postJSON(url, body) {
+      return fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    }
 
     function esc(s) {
       return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -119,26 +139,53 @@
       }
     }
 
+    async function updateRegisterButton() {
+      const approver = approverEl.value || 'ops-console';
+      try {
+        const { registered } = await (await fetch('/api/webauthn/registered?approver=' + encodeURIComponent(approver))).json();
+        registerBtn.textContent = registered ? '✓ Passkey registered' : 'Register passkey';
+        registerBtn.classList.toggle('done', registered);
+      } catch { /* ignore */ }
+    }
+
+    async function register() {
+      const approver = approverEl.value || 'ops-console';
+      try {
+        const options = await (await postJSON('/api/webauthn/register/options', { approver })).json();
+        const attResp = await startRegistration({ optionsJSON: options });
+        const { verified } = await (await postJSON('/api/webauthn/register/verify', { approver, response: attResp })).json();
+        toast(verified ? 'Passkey registered ✓' : 'Registration failed');
+        updateRegisterButton();
+      } catch (e) {
+        toast('Registration cancelled');
+      }
+    }
+
     async function approve(id) {
-      await fetch(`/api/proposals/${id}/approve`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ approver: approverEl.value || 'ops-console', method: 'passkey' }),
-      });
+      const approver = approverEl.value || 'ops-console';
+      try {
+        const { registered } = await (await fetch('/api/webauthn/registered?approver=' + encodeURIComponent(approver))).json();
+        if (!registered) { toast('Register a passkey first'); return; }
+        const options = await (await postJSON(`/api/proposals/${id}/approve/options`, { approver })).json();
+        const asseResp = await startAuthentication({ optionsJSON: options });
+        const res = await postJSON(`/api/proposals/${id}/approve/verify`, { approver, response: asseResp });
+        toast(res.ok ? 'Approved with passkey ✓' : 'Passkey verification failed');
+      } catch (e) {
+        toast('Approval cancelled');
+      }
       refresh();
     }
 
     async function deny(id) {
-      await fetch(`/api/proposals/${id}/deny`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ approver: approverEl.value || 'ops-console' }),
-      });
+      await postJSON(`/api/proposals/${id}/deny`, { approver: approverEl.value || 'ops-console' });
       refresh();
     }
 
     window.approve = approve;
     window.deny = deny;
+    window.register = register;
+    approverEl.addEventListener('change', updateRegisterButton);
+    updateRegisterButton();
     refresh();
     setInterval(refresh, 2000);
   </script>
