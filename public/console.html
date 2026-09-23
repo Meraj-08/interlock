@@ -111,6 +111,16 @@
     .chip-id b { color: var(--fg); font-weight: 500; }
 
     .consequence { color: var(--amber); font-size: 13px; margin: 12px 0; display: flex; gap: 7px; }
+    .flags { margin: 12px 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+    .flags-head { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--soft);
+      padding: 7px 11px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+    .flag { display: flex; gap: 8px; align-items: baseline; padding: 7px 11px; font-size: 12px; color: #cdd6df; border-bottom: 1px solid #171b21; }
+    .flag:last-child { border-bottom: 0; }
+    .flag i { font-style: normal; font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+      padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); flex-shrink: 0; }
+    .flag.critical i { color: var(--rose); border-color: var(--rose-dim); }
+    .flag.warning i { color: var(--amber); border-color: var(--amber-dim); }
+    .flag.info i { color: var(--accent); border-color: var(--accent-dim); }
     .params {
       margin: 12px 0; padding: 11px 13px; background: var(--panel-2); border: 1px solid var(--line);
       border-radius: 9px; font-family: var(--mono); font-size: 12px; color: #c6cfd8;
@@ -210,6 +220,11 @@
         <span class="chip-id">on behalf of <b>${esc(p.onBehalfOf)}</b></span>
       </div>`;
       const consequence = p.consequence ? `<div class="consequence">⚠ ${esc(p.consequence)}</div>` : '';
+      const flags = (p.findings && p.findings.length)
+        ? `<div class="flags"><div class="flags-head">🛡 AI risk review</div>` +
+            p.findings.map((f) => `<div class="flag ${esc(f.severity)}"><i>${esc(f.severity)}</i> ${esc(f.message)}</div>`).join('') +
+          `</div>`
+        : '';
       const params = `<div class="params">${esc(JSON.stringify(p.params ?? {}, null, 2))}</div>`;
       const hash = `<div class="hash">action_hash ${esc((p.action_hash || '').slice(0, 40))}…</div>`;
       let footer = '';
@@ -226,7 +241,7 @@
       return `<div class="card ${p.state}" style="--edge:${edge}">
         <div class="row"><span class="action">${esc(p.action)}</span>
           <span class="badges">${riskBadge}${stateBadge}</span></div>
-        ${chips}${consequence}${params}${hash}${footer}
+        ${chips}${consequence}${flags}${params}${hash}${footer}
       </div>`;
     }
 

@@ -178,6 +178,8 @@ function publicView(p) {
     params: p.params,
     riskClass: p.riskClass ?? null,
     consequence: p.consequence,
+    findings: p.findings ?? [],
+    analysisSeverity: p.analysisSeverity ?? null,
     action_hash: p.hash,
     approver: p.approver ?? null,
     method: p.method ?? null,

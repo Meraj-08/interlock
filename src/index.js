@@ -15,6 +15,7 @@
 
 // --- Interlock: human-in-the-loop guard ---
 export { RiskPolicy, rule } from './policy.js';
+export { ActionAnalyzer } from './analyzer.js';
 export { ApprovalAuthority } from './authority.js';
 export { Guard } from './guard.js';
 export { MemoryStore, FileStore, namespaced } from './store.js';

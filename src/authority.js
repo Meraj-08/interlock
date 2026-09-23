@@ -1,6 +1,7 @@
 import { MockGrayPass } from './mock/server.js';
 import { actionHash } from './action-hash.js';
 import { RiskPolicy } from './policy.js';
+import { ActionAnalyzer } from './analyzer.js';
 import { MemoryStore, namespaced } from './store.js';
 import { randomUUID } from 'node:crypto';
 
@@ -34,6 +35,7 @@ export class ApprovalAuthority {
   static async create(opts = {}) {
     const a = new ApprovalAuthority();
     a.policy = opts.policy ?? RiskPolicy.default();
+    a.analyzer = opts.analyzer ?? new ActionAnalyzer();
     a.store = opts.store ?? new MemoryStore();
     a.signer = await MockGrayPass.create({
       proofTtlSeconds: opts.approvalTtlSeconds ?? 300,
@@ -66,6 +68,21 @@ export class ApprovalAuthority {
    */
   async propose(p) {
     const decision = this.policy.evaluate({ action: p.action, riskClass: p.riskClass, params: p.params });
+
+    // AI/heuristic review of the action itself — findings inform the decision
+    // and give the human context.
+    const analysis = await this.analyzer.analyze({
+      agent: p.agent, onBehalfOf: p.onBehalfOf, action: p.action,
+      params: p.params, riskClass: p.riskClass, resource: p.resource,
+    });
+    let { outcome, rule, reason } = decision;
+    // A flagged action must not slip through on an auto-allow.
+    if (outcome === 'auto_allow' && analysis.escalate) {
+      outcome = 'require_approval';
+      rule = 'analyzer';
+      reason = `escalated by risk analysis (${analysis.severity})`;
+    }
+
     const id = 'apr_' + randomUUID().slice(0, 12);
     const request = this._request(p);
     const hash = actionHash(request);
@@ -82,31 +99,34 @@ export class ApprovalAuthority {
       params: p.params,
       riskClass: p.riskClass ?? null,
       consequence: p.consequence ?? '',
+      findings: analysis.findings,
+      analysisSeverity: analysis.severity,
       proof: null,
       jti: null,
       approver: null,
       createdAt: Date.now(),
     };
 
-    if (decision.outcome === 'deny') {
+    if (outcome === 'deny') {
       proposal.state = 'denied';
       await this.proposalStore.set(id, proposal);
-      return { outcome: 'deny', rule: decision.rule, reason: decision.reason };
+      return { outcome: 'deny', rule, reason, findings: analysis.findings };
     }
 
-    if (decision.outcome === 'auto_allow') {
+    if (outcome === 'auto_allow') {
       await this._mint(proposal, { approver: 'policy:auto', method: 'auto' });
-      return { outcome: 'auto_allow', rule: decision.rule, reason: decision.reason, approvalId: id };
+      return { outcome: 'auto_allow', rule, reason, approvalId: id, findings: analysis.findings };
     }
 
     // require_approval: hold for a human. Expose an immutable review card.
     await this.proposalStore.set(id, proposal);
     return {
       outcome: 'needs_approval',
-      rule: decision.rule,
-      reason: decision.reason,
+      rule,
+      reason,
       approvalId: id,
       review: this._card(proposal),
+      findings: analysis.findings,
     };
   }
 
@@ -167,6 +187,7 @@ export class ApprovalAuthority {
       action: p.action,
       params: p.params,
       consequence: p.consequence,
+      findings: p.findings ?? [],
       action_hash: p.hash,
     };
   }
