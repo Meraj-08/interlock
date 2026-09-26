@@ -9,7 +9,13 @@
  * Rules are evaluated in order; the first match wins. A rule may inspect the
  * action key, the declared risk class, and the concrete params (e.g. amount).
  * Anything not matched falls through to `defaultOutcome`.
+ *
+ * Rules can be written in code (rule()) or loaded from a JSON policy file
+ * (RiskPolicy.fromFile / fromJSON).
  */
+
+import { readFile } from 'node:fs/promises';
+import { compilePolicy, PolicyError } from './policy-file.js';
 
 /** @typedef {'auto_allow'|'require_approval'|'deny'} Outcome */
 
@@ -38,6 +44,40 @@ export class RiskPolicy {
       }
     }
     return { outcome: this.defaultOutcome, rule: 'default', reason: 'no rule matched; default applied' };
+  }
+
+  /**
+   * Build a policy from a parsed policy document (see policy-file.js for the
+   * format). Throws PolicyError naming the rule and field if it is invalid.
+   * @param {unknown} doc
+   */
+  static fromJSON(doc) {
+    return new RiskPolicy(compilePolicy(doc));
+  }
+
+  /**
+   * Load a policy file (JSON). Errors include the file path.
+   * @param {string} path
+   */
+  static async fromFile(path) {
+    let text;
+    try {
+      text = await readFile(path, 'utf8');
+    } catch (err) {
+      throw new PolicyError(`${path}: cannot read policy file (${err.code ?? err.message})`);
+    }
+    let doc;
+    try {
+      doc = JSON.parse(text);
+    } catch (err) {
+      throw new PolicyError(`${path}: not valid JSON (${err.message})`);
+    }
+    try {
+      return RiskPolicy.fromJSON(doc);
+    } catch (err) {
+      if (err instanceof PolicyError) throw new PolicyError(`${path}: ${err.message}`);
+      throw err;
+    }
   }
 
   /**

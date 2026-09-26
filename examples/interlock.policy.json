@@ -1,0 +1,41 @@
+{
+  "default": "require_approval",
+  "rules": [
+    {
+      "id": "never-delete-accounts",
+      "match": { "action": "account.delete" },
+      "outcome": "deny",
+      "reason": "agents never delete accounts"
+    },
+    {
+      "id": "no-rm-rf-root",
+      "match": { "action": "Bash", "params": { "command": "rm\\s+-rf?\\s+/(\\s|$)" } },
+      "outcome": "deny",
+      "reason": "deleting the filesystem root is never allowed"
+    },
+    {
+      "id": "force-push-needs-human",
+      "match": { "action": "Bash", "params": { "command": "git\\s+push\\b.*(--force|-f\\b)" } },
+      "outcome": "require_approval",
+      "reason": "force-pushing rewrites shared history"
+    },
+    {
+      "id": "read-only-git",
+      "match": { "action": "Bash", "params": { "command": "^git\\s+(status|diff|log|show)\\b" } },
+      "outcome": "auto_allow",
+      "reason": "read-only git commands"
+    },
+    {
+      "id": "small-refunds",
+      "match": { "action": "refund.issue", "params": { "amount": { "lt": 100 } } },
+      "outcome": "auto_allow",
+      "reason": "refunds under 100 run on their own"
+    },
+    {
+      "id": "high-risk-needs-human",
+      "match": { "riskClass": ["high", "critical"] },
+      "outcome": "require_approval",
+      "reason": "high or critical risk"
+    }
+  ]
+}

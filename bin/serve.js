@@ -7,10 +7,19 @@ import { InterlockServer, FileStore, RiskPolicy } from '../src/index.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const store = new FileStore(join(__dirname, '..', 'data', 'interlock.json'));
 
-const server = await InterlockServer.create({
-  store,
-  policy: RiskPolicy.default({ autoApproveUnder: 100, denyActions: ['account.delete'] }),
-});
+// INTERLOCK_POLICY=path/to/policy.json swaps the built-in rules for a policy file.
+const policyPath = process.env.INTERLOCK_POLICY;
+let policy;
+try {
+  policy = policyPath
+    ? await RiskPolicy.fromFile(policyPath)
+    : RiskPolicy.default({ autoApproveUnder: 100, denyActions: ['account.delete'] });
+} catch (err) {
+  console.error(`Interlock: ${err.message}`);
+  process.exit(1);
+}
+
+const server = await InterlockServer.create({ store, policy });
 
 // Seed one pending high-risk proposal so the console isn't empty on first run.
 const pending = (await server.authority.list()).some((p) => p.state === 'pending');
@@ -29,4 +38,5 @@ const port = await server.listen(process.env.PORT || 4000);
 console.log(`\n🔒 Interlock server running`);
 console.log(`   Console:  http://localhost:${port}/console`);
 console.log(`   API:      http://localhost:${port}/api/proposals`);
-console.log(`   State:    ${store.path}\n`);
+console.log(`   State:    ${store.path}`);
+console.log(`   Policy:   ${policyPath ?? 'built-in default'}\n`);
