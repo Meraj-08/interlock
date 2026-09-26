@@ -55,7 +55,7 @@ guard.execute(id, fn) -> verify proof (signature + bindings)
 
 ```bash
 npm install
-npm test        # 31 tests
+npm test        # 53 tests
 npm run demo    # narrated offline walkthrough (approval, tamper, deny, fail-closed)
 ```
 
@@ -116,6 +116,50 @@ const result = await guard.execute(decision.approvalId, async () => {
 if (!result.executed) return handleRefusal(result.reason);
 ```
 
+## Writing a policy
+
+Rules can live in a JSON file instead of code. The first rule that matches
+decides the outcome (`auto_allow`, `require_approval`, or `deny`); if none
+matches, `default` applies (`require_approval` when omitted).
+
+```json
+{
+  "default": "require_approval",
+  "rules": [
+    { "id": "never-delete-accounts", "match": { "action": "account.delete" }, "outcome": "deny" },
+    { "id": "force-push-needs-human",
+      "match": { "action": "Bash", "params": { "command": "git\\s+push\\b.*(--force|-f\\b)" } },
+      "outcome": "require_approval", "reason": "force-pushing rewrites shared history" },
+    { "id": "small-refunds",
+      "match": { "action": "refund.issue", "params": { "amount": { "lt": 100 } } },
+      "outcome": "auto_allow" }
+  ]
+}
+```
+
+Everything in `match` must hold for the rule to apply:
+
+| Field | Matches |
+|---|---|
+| `action` | exact name, `*` wildcard (`"read.*"`), or a list of either |
+| `riskClass` | `low`, `elevated`, `high`, `critical`, or a list |
+| `params.<name>` | a string is a regular expression searched in the value; a number or boolean must be equal; or an object of operators: `lt`, `lte`, `gt`, `gte`, `eq`, `in`, `regex` |
+
+An empty `match` matches everything. Numeric operators never match a missing or
+non-numeric value. The file is checked when it loads: an unknown field, a bad
+regex, or a wrong type is an error naming the rule and field.
+
+```js
+const policy = await RiskPolicy.fromFile('interlock.policy.json');
+```
+
+```bash
+INTERLOCK_POLICY=examples/interlock.policy.json npm run serve
+```
+
+See [`examples/interlock.policy.json`](examples/interlock.policy.json) for a
+complete example.
+
 ## Behavior (each row has a test)
 
 | Scenario | Result |
@@ -136,6 +180,7 @@ if (!result.executed) return handleRefusal(result.reason);
 ```
 src/
   policy.js          RiskPolicy: auto_allow / require_approval / deny
+  policy-file.js     JSON policy files: validation + rule compilation
   authority.js       ApprovalAuthority: proposal lifecycle + proof minting
   guard.js           Guard: execution boundary, exactly-once, fail-closed
   store.js           MemoryStore / FileStore: durable state
@@ -153,6 +198,7 @@ public/
   logo.svg           logo mark
 test/                one file per area (loop, HTTP, WebAuthn, persistence, Signet)
 examples/demo.js     narrated offline walkthrough
+examples/interlock.policy.json  example policy file
 docs/                screenshots
 ```
 
