@@ -22,5 +22,8 @@
   "dependencies": {
     "@simplewebauthn/server": "^14.0.2",
     "jose": "^5.9.6"
+  },
+  "bin": {
+    "interlock": "./bin/interlock.js"
   }
 }

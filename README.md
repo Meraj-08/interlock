@@ -55,7 +55,7 @@ guard.execute(id, fn) -> verify proof (signature + bindings)
 
 ```bash
 npm install
-npm test        # 53 tests
+npm test        # 69 tests
 npm run demo    # narrated offline walkthrough (approval, tamper, deny, fail-closed)
 ```
 
@@ -72,6 +72,25 @@ npm run serve   # http://localhost:4000
 
 State is written to `data/interlock.json`, so registrations, approvals, and
 one-time consumption survive a restart. Delete that file to reset.
+
+## Command line
+
+```bash
+npx interlock --help
+npx interlock serve --port 4000 --policy interlock.policy.json
+npx interlock policy check interlock.policy.json
+```
+
+| Command | What it does |
+|---|---|
+| `interlock serve` | start the service and console (`--port`, `--policy`, `--data`, `--demo`) |
+| `interlock policy check [file]` | validate a policy file and print a summary |
+| `interlock hook claude` | Claude Code hook (coming in #4) |
+| `interlock trail verify` | verify the audit trail (coming in #5) |
+
+Every command takes `--help`. Exit codes: `0` success, `1` the command failed
+(for example an invalid policy), `2` usage error. `npm run serve` is
+`interlock serve --demo`.
 
 ## HTTP API
 
@@ -181,6 +200,8 @@ complete example.
 src/
   policy.js          RiskPolicy: auto_allow / require_approval / deny
   policy-file.js     JSON policy files: validation + rule compilation
+  cli.js             the `interlock` command line
+  serve.js           startServer(): service + durable state + policy file
   authority.js       ApprovalAuthority: proposal lifecycle + proof minting
   guard.js           Guard: execution boundary, exactly-once, fail-closed
   store.js           MemoryStore / FileStore: durable state
@@ -191,7 +212,8 @@ src/
   online.js          Signet: online verify + one-time consume
   jwks.js  replay.js  reasons.js  action-hash.js
   mock/server.js     signer + fetch-compatible API (persists key + proofs)
-bin/serve.js         `npm run serve` entry point
+bin/interlock.js     `interlock` command
+bin/serve.js         `npm run serve` (= interlock serve --demo)
 public/
   index.html         landing page
   console.html       approval console
