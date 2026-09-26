@@ -55,7 +55,7 @@ guard.execute(id, fn) -> verify proof (signature + bindings)
 
 ```bash
 npm install
-npm test        # 69 tests
+npm test        # 83 tests
 npm run demo    # narrated offline walkthrough (approval, tamper, deny, fail-closed)
 ```
 
@@ -85,12 +85,19 @@ npx interlock policy check interlock.policy.json
 |---|---|
 | `interlock serve` | start the service and console (`--port`, `--policy`, `--data`, `--demo`) |
 | `interlock policy check [file]` | validate a policy file and print a summary |
-| `interlock hook claude` | Claude Code hook (coming in #4) |
+| `interlock hook claude` | Claude Code hook: passkey approval for risky tool calls ([setup](docs/claude-code.md)) |
 | `interlock trail verify` | verify the audit trail (coming in #5) |
 
 Every command takes `--help`. Exit codes: `0` success, `1` the command failed
 (for example an invalid policy), `2` usage error. `npm run serve` is
 `interlock serve --demo`.
+
+## Guarding Claude Code
+
+`interlock hook claude` is a Claude Code `PreToolUse` hook. Risky tool calls
+wait for a passkey approval in the console, denied calls are blocked with the
+rule's reason, and everything else goes through Claude Code's normal prompts.
+If Interlock is down, calls are blocked. Setup: [docs/claude-code.md](docs/claude-code.md).
 
 ## HTTP API
 
@@ -193,6 +200,7 @@ complete example.
 | Deny-listed action | `deny` — no approval offered |
 | Authority unreachable | refused (`unavailable`) — fails closed |
 | Approve twice | idempotent — no second proof |
+| Approve over HTTP without a passkey | refused (`passkey_required`) |
 
 ## Project layout
 
@@ -201,6 +209,7 @@ src/
   policy.js          RiskPolicy: auto_allow / require_approval / deny
   policy-file.js     JSON policy files: validation + rule compilation
   cli.js             the `interlock` command line
+  claude-hook.js     Claude Code PreToolUse hook
   serve.js           startServer(): service + durable state + policy file
   authority.js       ApprovalAuthority: proposal lifecycle + proof minting
   guard.js           Guard: execution boundary, exactly-once, fail-closed
@@ -221,7 +230,7 @@ public/
 test/                one file per area (loop, HTTP, WebAuthn, persistence, Signet)
 examples/demo.js     narrated offline walkthrough
 examples/interlock.policy.json  example policy file
-docs/                screenshots
+docs/                screenshots, claude-code.md (hook setup)
 ```
 
 ## Limitations

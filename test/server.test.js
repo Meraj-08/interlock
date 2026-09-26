@@ -5,7 +5,7 @@ import { InterlockServer } from '../src/index.js';
 // End-to-end over real HTTP: an agent proposes, the console lists it, a human
 // approves, the agent executes once, and a replay is refused.
 test('HTTP: propose -> approve -> execute once -> replay blocked', async () => {
-  const server = await InterlockServer.create();
+  const server = await InterlockServer.create({ allowClickApproval: true });
   const port = await server.listen(0); // ephemeral port
   const base = `http://localhost:${port}`;
 
@@ -43,7 +43,7 @@ test('HTTP: propose -> approve -> execute once -> replay blocked', async () => {
 });
 
 test('HTTP: tampered execute params are rejected', async () => {
-  const server = await InterlockServer.create();
+  const server = await InterlockServer.create({ allowClickApproval: true });
   const port = await server.listen(0);
   const base = `http://localhost:${port}`;
   try {
