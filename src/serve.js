@@ -10,6 +10,7 @@ import { RiskPolicy } from './policy.js';
  * @param {number} [opts.port]        Default 4000; 0 picks a free port.
  * @param {string} [opts.policyPath]  JSON policy file; the built-in default when omitted.
  * @param {string} [opts.dataPath]    State file. Default ./data/interlock.json.
+ * @param {string} [opts.setupCode]   Code required to register a passkey; random when omitted.
  * @param {boolean} [opts.demo]       Seed one pending proposal so the console isn't empty.
  * @param {string} [opts.cwd]         Base for relative paths. Default process.cwd().
  * @returns {Promise<{server: InterlockServer, port: number, dataPath: string, policyPath: string|null}>}
@@ -24,7 +25,7 @@ export async function startServer(opts = {}) {
     ? await RiskPolicy.fromFile(policyPath)
     : RiskPolicy.default({ autoApproveUnder: 100, denyActions: ['account.delete'] });
 
-  const server = await InterlockServer.create({ store: new FileStore(dataPath), policy });
+  const server = await InterlockServer.create({ store: new FileStore(dataPath), policy, setupCode: opts.setupCode });
 
   if (opts.demo) {
     const pending = (await server.authority.list()).some((p) => p.state === 'pending');

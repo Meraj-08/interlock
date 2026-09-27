@@ -133,6 +133,14 @@ test('commands that are not built yet say so and exit 1', async () => {
   assert.match(trail.err, /not available yet.*#5/);
 });
 
+test('serve refuses a setup code shorter than 8 characters', async () => {
+  const r = await cli(['serve', '--setup-code', 'abc']);
+  assert.equal(r.code, 2);
+  assert.match(r.err, /setup code must be at least 8 characters/);
+  const env = await cli(['serve'], { env: { INTERLOCK_SETUP_CODE: 'abc' } });
+  assert.equal(env.code, 2);
+});
+
 test('serve refuses an invalid policy before starting', async () => {
   const dir = await tempDir();
   const file = join(dir, 'bad.json');
@@ -146,7 +154,10 @@ test('the bin script starts the server with a policy file and serves the API', a
   const dir = await tempDir();
   const child = spawn(process.execPath, [
     BIN, 'serve', '--port', '0', '--policy', EXAMPLE, '--data', join(dir, 'state.json'),
+    '--setup-code', 'CLI-TEST-CODE',
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let printed = '';
+  child.stdout.on('data', (d) => { printed += d; });
 
   try {
     const port = await new Promise((resolve, reject) => {
@@ -155,7 +166,7 @@ test('the bin script starts the server with a policy file and serves the API', a
       child.stdout.on('data', (d) => {
         buf += d;
         const m = buf.match(/localhost:(\d+)\/console/);
-        if (m && buf.includes('Policy:')) { clearTimeout(timer); resolve(Number(m[1])); }
+        if (m && buf.includes('Setup code')) { clearTimeout(timer); resolve(Number(m[1])); }
       });
       child.stderr.on('data', (d) => { buf += d; });
       child.on('exit', (code) => reject(new Error(`server exited early (${code}):\n${buf}`)));
@@ -169,6 +180,7 @@ test('the bin script starts the server with a policy file and serves the API', a
     const body = await res.json();
     assert.equal(body.outcome, 'auto_allow');
     assert.equal(body.rule, 'read-only-git');
+    assert.match(printed, /Setup code \(to register a passkey\): CLI-TEST-CODE/);
   } finally {
     child.kill();
   }
