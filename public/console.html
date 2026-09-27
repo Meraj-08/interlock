@@ -14,6 +14,7 @@
       --accent: #3ee0a0; --accent-dim: #164034;
       --rose: #f2607e; --rose-dim: #3a1622;
       --amber: #f2c15a; --amber-dim: #3a2f16;
+      --sky: #7ab4f5; --sky-dim: #16283a;
       --chip: #171a1f;
       --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
       --display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
@@ -143,6 +144,11 @@
     .note { font-family: var(--mono); font-size: 12px; margin-top: 8px; display: flex; gap: 7px; align-items: center; }
     .note.approved { color: var(--accent); }
     .note.denied { color: var(--rose); }
+    .note.observed { color: var(--sky); }
+    .state.observed { color: var(--sky); border-color: var(--sky-dim); }
+    .section-head { font-family: var(--mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+      color: var(--sky); margin: 34px 0 6px; }
+    .section-note { color: var(--soft); font-size: 13px; margin: 0 0 14px; }
 
     .toast {
       position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
@@ -205,6 +211,7 @@
       low: { label: 'LOW', color: 'var(--accent)' },
     };
     function edgeColor(p) {
+      if (p.observed) return 'var(--sky)';
       if (p.state === 'approved') return 'var(--accent)';
       if (p.state === 'denied') return 'var(--rose)';
       return (RISK[p.riskClass] || { color: 'var(--muted)' }).color;
@@ -214,7 +221,9 @@
       const edge = edgeColor(p);
       const risk = RISK[p.riskClass];
       const riskBadge = risk ? `<span class="badge risk">${risk.label}</span>` : '';
-      const stateBadge = `<span class="badge state ${p.state}">${p.state}</span>`;
+      const stateBadge = p.observed
+        ? `<span class="badge state observed">observed</span>`
+        : `<span class="badge state ${p.state}">${p.state}</span>`;
       const chips = `<div class="chips">
         <span class="chip-id"><span class="agent-dot"></span>agent <b>${esc(p.agent)}</b></span>
         <span class="chip-id">on behalf of <b>${esc(p.onBehalfOf)}</b></span>
@@ -228,7 +237,10 @@
       const params = `<div class="params">${esc(JSON.stringify(p.params ?? {}, null, 2))}</div>`;
       const hash = `<div class="hash">action_hash ${esc((p.action_hash || '').slice(0, 40))}…</div>`;
       let footer = '';
-      if (p.state === 'pending') {
+      if (p.observed) {
+        const would = p.wouldHave === 'deny' ? 'been blocked' : 'needed approval';
+        footer = `<div class="note observed">👁 Would have ${would} (rule ${esc(p.rule || '')}) · allowed because the rule is in observe mode</div>`;
+      } else if (p.state === 'pending') {
         footer = `<div class="actions">
           <button class="act approve" onclick="approve('${p.id}')">🔑 Approve with passkey</button>
           <button class="act deny" onclick="deny('${p.id}')">Deny</button>
@@ -246,19 +258,28 @@
     }
 
     function setStatus(items) {
-      const n = (s) => items.filter((p) => p.state === s).length;
+      const n = (s) => items.filter((p) => !p.observed && p.state === s).length;
+      const observed = items.filter((p) => p.observed).length;
       statusEl.innerHTML =
         `System online · <span class="count">${n('pending')}</span> pending · ` +
         `<span class="count">${n('approved')}</span> approved · ` +
-        `<span class="count">${n('denied')}</span> denied`;
+        `<span class="count">${n('denied')}</span> denied` +
+        (observed ? ` · <span class="count">${observed}</span> observed` : '');
     }
 
     async function refresh() {
       try {
         const items = await (await fetch('/api/proposals')).json();
         setStatus(items);
+        // Observed decisions never needed anyone; keep them apart from real requests.
+        const enforced = items.filter((p) => !p.observed);
+        const observed = items.filter((p) => p.observed);
         listEl.innerHTML = items.length
-          ? items.map(card).join('')
+          ? enforced.map(card).join('') + (observed.length
+            ? `<div class="section-head">Observed only · ${observed.length}</div>` +
+              `<p class="section-note">These matched rules in observe mode. Nothing was held or blocked; switch the rule to enforce when you're ready.</p>` +
+              observed.map(card).join('')
+            : '')
           : '<div class="empty">No proposals yet — agents appear here when they request a risky action.</div>';
       } catch {
         listEl.innerHTML = '<div class="empty">Cannot reach the server.</div>';

@@ -18,16 +18,19 @@ import { readFile } from 'node:fs/promises';
 import { compilePolicy, PolicyError } from './policy-file.js';
 
 /** @typedef {'auto_allow'|'require_approval'|'deny'} Outcome */
+/** @typedef {'observe'|'enforce'} Mode */
 
 export class RiskPolicy {
   /**
    * @param {Object} [cfg]
    * @param {Array<Rule>} [cfg.rules]  Ordered rules; first match wins.
    * @param {Outcome} [cfg.defaultOutcome]  Default 'require_approval' (fail safe).
+   * @param {Mode} [cfg.defaultMode]  Mode for rules without one and the fallback. Default 'enforce'.
    */
   constructor(cfg = {}) {
     this.rules = cfg.rules ?? [];
     this.defaultOutcome = cfg.defaultOutcome ?? 'require_approval';
+    this.defaultMode = cfg.defaultMode ?? 'enforce';
   }
 
   /**
@@ -35,15 +38,27 @@ export class RiskPolicy {
    * @param {string} proposal.action
    * @param {'low'|'elevated'|'high'|'critical'} [proposal.riskClass]
    * @param {Object} [proposal.params]
-   * @returns {{outcome: Outcome, rule: string, reason: string}}
+   * @returns {{outcome: Outcome, rule: string, reason: string, mode: Mode}}
+   *   `mode` says whether the outcome is enforced or only observed; acting on
+   *   it is the caller's job (ApprovalAuthority).
    */
   evaluate(proposal) {
     for (const rule of this.rules) {
       if (rule.match(proposal)) {
-        return { outcome: rule.outcome, rule: rule.name, reason: rule.reason ?? rule.name };
+        return {
+          outcome: rule.outcome,
+          rule: rule.name,
+          reason: rule.reason ?? rule.name,
+          mode: rule.mode ?? this.defaultMode,
+        };
       }
     }
-    return { outcome: this.defaultOutcome, rule: 'default', reason: 'no rule matched; default applied' };
+    return {
+      outcome: this.defaultOutcome,
+      rule: 'default',
+      reason: 'no rule matched; default applied',
+      mode: this.defaultMode,
+    };
   }
 
   /**
@@ -112,6 +127,7 @@ export class RiskPolicy {
  * @property {(p: Object) => boolean} match
  * @property {Outcome} outcome
  * @property {string} [reason]
+ * @property {Mode} [mode]  Default: the policy's defaultMode.
  */
 
 /** @returns {Rule} */

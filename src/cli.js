@@ -194,7 +194,11 @@ async function policyCheck({ args }, io) {
     return 1;
   }
   const n = policy.rules.length;
-  io.stdout.write(`${path}: valid: ${n} rule${n === 1 ? '' : 's'}, default ${policy.defaultOutcome}\n`);
+  const observed = policy.rules.filter((r) => (r.mode ?? policy.defaultMode) === 'observe').length;
+  let summary = `${n} rule${n === 1 ? '' : 's'}, default ${policy.defaultOutcome}`;
+  if (policy.defaultMode === 'observe') summary += ', default mode observe';
+  if (observed > 0) summary += `, ${observed} in observe mode (recorded, never blocked)`;
+  io.stdout.write(`${path}: valid: ${summary}\n`);
   return 0;
 }
 
