@@ -7,6 +7,7 @@ import { ApprovalAuthority } from './authority.js';
 import { Guard } from './guard.js';
 import { RiskPolicy } from './policy.js';
 import { WebAuthnApprover } from './webauthn.js';
+import { encodeReceipt } from './receipt.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
@@ -87,6 +88,33 @@ export class InterlockServer {
       if (method === 'GET' && /^\/[\w.-]+\.(png|jpe?g|svg|ico|css|js|webp)$/.test(path)) {
         return this._serveFile(res, path.slice(1));
       }
+      // --- Receipts: what a target service needs to check one itself ---
+      if (method === 'GET' && path === '/.well-known/interlock.json') {
+        const a = this.authority;
+        return json(res, 200, {
+          issuer: a.issuer,
+          audience: a.audience,
+          tenant: a.tenant,
+          environment: a.environment,
+          environmentKind: a.environmentKind,
+          jwks_uri: '/.well-known/graypass-proof-keys.json',
+          verify_uri: '/api/v1/verify',
+        });
+      }
+      if (method === 'GET' && path === '/.well-known/graypass-proof-keys.json') {
+        return json(res, 200, this.authority.signer.jwks());
+      }
+      if (method === 'POST' && path === '/api/v1/verify') {
+        // The one-time consume, shared with the Guard: a proof used at the
+        // target cannot be executed again here, and vice versa.
+        const body = await readBody(req);
+        const r = await this.authority.signer.fetchImpl(`${this.authority.signer.origin}/api/v1/verify`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        return json(res, r.status, await r.json());
+      }
+
       if (method === 'POST' && path === '/api/propose') {
         const body = await readBody(req);
         return json(res, 200, await this.authority.propose(body));
@@ -131,9 +159,23 @@ export class InterlockServer {
         return json(res, 200, await this.authority.approve(id, { approver, method: 'passkey' }));
       }
 
-      const m = path.match(/^\/api\/proposals\/([^/]+)(?:\/(approve|deny|execute))?$/);
+      const m = path.match(/^\/api\/proposals\/([^/]+)(?:\/(approve|deny|execute|receipt))?$/);
       if (m) {
         const [, id, verb] = m;
+        if (method === 'GET' && verb === 'receipt') {
+          const p = await this.authority.get(id);
+          if (!p) return json(res, 404, { error: 'unknown_approval' });
+          if (p.state !== 'approved' || !p.proof) return json(res, 409, { error: 'not_approved', state: p.state });
+          const rec = await this.authority.signer.proofs.get(p.jti);
+          if (rec?.status !== 'active') return json(res, 410, { error: 'receipt_used', status: rec?.status ?? 'unknown' });
+          const r = p.request;
+          return json(res, 200, {
+            receipt: encodeReceipt({
+              proof: p.proof,
+              binding: { nonce: r.nonce, subject: r.subject, actor: r.actor, actorType: r.actorType, resource: r.resource },
+            }),
+          });
+        }
         if (method === 'GET' && !verb) {
           const p = await this.authority.get(id);
           return p ? json(res, 200, publicView(p)) : json(res, 404, { error: 'unknown_approval' });
