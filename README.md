@@ -6,7 +6,7 @@
 
 <p align="center">
   <img alt="Node.js 18+" src="https://img.shields.io/badge/node-%3E%3D18-3c873a">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-91%20passing-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-103%20passing-2ea44f">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
   <a href="docs/claude-code.md"><img alt="Claude Code hook" src="https://img.shields.io/badge/Claude%20Code-hook-d97757"></a>
 </p>
@@ -28,7 +28,7 @@ cryptography rather than a flag an agent could flip.
 git clone https://github.com/Meraj-08/interlock.git
 cd interlock
 npm install
-npm test                # 91 tests
+npm test                # 103 tests
 npm run demo            # narrated offline walkthrough
 npm run serve           # service + console on http://localhost:4000
 ```
@@ -301,6 +301,36 @@ regex, or a wrong type is an error naming the rule and field. Claude Code tool
 calls are matched as `action` = tool name and `params` = tool input. A complete
 example is in [`examples/interlock.policy.json`](examples/interlock.policy.json).
 
+### Observe Mode
+
+A rule in observe mode is evaluated and recorded but never blocks or holds
+anything, so you can try a policy on real traffic before it can get in the way:
+
+```json
+{
+  "defaultMode": "observe",
+  "rules": [
+    { "id": "no-rm-rf-root", "match": { "action": "Bash", "params": { "command": "rm\\s+-rf\\s+/$" } },
+      "outcome": "deny", "locked": true },
+    { "id": "force-push-needs-human", "match": { "action": "Bash", "params": { "command": "push.*--force" } },
+      "outcome": "require_approval" },
+    { "id": "drop-table", "match": { "action": "Bash", "params": { "command": "DROP TABLE" } },
+      "outcome": "require_approval", "mode": "enforce" }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `mode` | `observe` or `enforce` for one rule |
+| `defaultMode` | mode for rules without one, and for the fallback (default `enforce`) |
+| `locked` | `true` makes a rule always enforce, whatever `defaultMode` says |
+
+Every decision records `mode` and `wouldHave` (what enforce mode would have
+done). An observed call runs as if it were auto-allowed; the console lists it
+under "Observed only" with the rule it matched. When the observed decisions
+look right, switch the rules to `enforce`.
+
 ### Environment Variables
 
 | Variable | Used by | Purpose |
@@ -323,7 +353,7 @@ npx interlock hook claude --timeout 280
 | Command | Status | Purpose |
 | --- | --- | --- |
 | `interlock serve` | implemented | service + console (`--port`, `--policy`, `--data`, `--setup-code`, `--demo`) |
-| `interlock policy check [file]` | implemented | validate a policy file and print a summary |
+| `interlock policy check [file]` | implemented | validate a policy file and print a summary, including rules in observe mode |
 | `interlock hook claude` | implemented | Claude Code hook (`--server`, `--timeout`, `--user`, `--no-open`) |
 | `interlock trail verify` | planned (#5) | verify the audit trail |
 
@@ -406,6 +436,8 @@ Each row has a test:
 | Approve over HTTP without a passkey | refused (`passkey_required`) |
 | Register a passkey without the setup code | refused (`setup_code_required`) |
 | Register again for an approver with a passkey | refused (`already_registered`) |
+| Rule in observe mode | recorded with `wouldHave`, never blocked or held |
+| Locked rule under `defaultMode: observe` | still enforced |
 | Claude Code hook: server down or bad input | call blocked |
 | Claude Code hook: no answer in time | call blocked, request closed |
 
@@ -442,6 +474,7 @@ npm run serve           # service with a seeded demo request
 | `persistence.test.js` | state surviving a restart |
 | `cli.test.js` | commands, flags, exit codes |
 | `claude-hook.test.js` | the Claude Code hook, with real hook-input fixtures |
+| `observe.test.js` | observe and enforce modes, locked rules |
 
 ## Roadmap
 
@@ -453,7 +486,7 @@ Tracked in [#9](https://github.com/Meraj-08/interlock/issues/9):
 | #3 | `interlock` CLI | done |
 | #4 | Claude Code passkey approval hook | done |
 | #14 | Setup code for passkey registration | done |
-| #2 | Observe and enforce modes per rule | planned |
+| #2 | Observe and enforce modes per rule | done |
 | #5 | Hash-chained audit trail + `interlock trail verify` | planned |
 | #6 | Receipt verification middleware for target services | planned |
 | #7 | MCP proxy that guards `tools/call` | planned |
@@ -464,6 +497,7 @@ Tracked in [#9](https://github.com/Meraj-08/interlock/issues/9):
 Implemented:
 
 - Risk policy in code or JSON policy files, validated at load time
+- Observe and enforce modes per rule, with locked rules
 - Action analyzer with escalation and reviewer findings
 - Approval lifecycle with single-use, action-bound ES256 proofs
 - Fail-closed guard with two-phase Signet verification
@@ -473,8 +507,8 @@ Implemented:
 - `interlock` CLI
 - Claude Code `PreToolUse` hook
 
-Planned: observe mode, an audit trail, receipt checks in target services, an MCP
-proxy, and a hosted demo (see [Roadmap](#roadmap)).
+Planned: an audit trail, receipt checks in target services, an MCP proxy, and a
+hosted demo (see [Roadmap](#roadmap)).
 
 ## Design Principles
 

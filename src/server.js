@@ -226,6 +226,11 @@ function publicView(p) {
     approver: p.approver ?? null,
     method: p.method ?? null,
     denyReason: p.denyReason ?? null,
+    rule: p.rule ?? null,
+    reason: p.reason ?? null,
+    mode: p.mode ?? 'enforce',
+    observed: p.observed ?? false,
+    wouldHave: p.wouldHave ?? null,
     createdAt: p.createdAt,
   };
 }

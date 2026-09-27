@@ -48,6 +48,11 @@ If the Interlock service is not running, calls are blocked (fail closed).
    }
    ```
 
+   Tip: start with `"defaultMode": "observe"` in the policy. Nothing is
+   blocked or held; the console shows what *would* have been, and you switch
+   rules to `enforce` once they look right. Mark must-never-happen rules
+   `"locked": true` so they are enforced from day one.
+
    Keep `--timeout` (how long Interlock waits for a person) **below** the
    hook's `timeout` (when Claude Code gives up on the hook). If Claude Code
    stops the hook first, the call is not blocked. Without `--timeout`,

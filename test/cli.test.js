@@ -86,6 +86,22 @@ test('policy check uses INTERLOCK_POLICY when no file is given', async () => {
   assert.ok(r.out.includes(EXAMPLE));
 });
 
+test('policy check says which rules are only observed', async () => {
+  const dir = await tempDir();
+  const file = join(dir, 'observe.json');
+  await writeFile(file, JSON.stringify({
+    defaultMode: 'observe',
+    rules: [
+      { id: 'a', match: {}, outcome: 'deny', locked: true },
+      { id: 'b', match: {}, outcome: 'deny' },
+      { id: 'c', match: {}, outcome: 'deny' },
+    ],
+  }));
+  const r = await cli(['policy', 'check', file]);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /valid: 3 rules, default require_approval, default mode observe, 2 in observe mode/);
+});
+
 test('policy check reports an invalid file and exits 1', async () => {
   const dir = await tempDir();
   const file = join(dir, 'bad.json');

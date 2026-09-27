@@ -21,14 +21,20 @@
  *              or boolean must be equal, or an object of operators
  *              { lt, lte, gt, gte, eq, in, regex }
  *
+ * Modes: a rule in "observe" mode is evaluated and recorded but never blocks
+ * or holds anything; "enforce" (the default) applies it. "defaultMode" sets
+ * the mode for rules without one and for the fallback. A rule marked
+ * "locked": true always enforces, whatever the default.
+ *
  * Everything is validated at load time: a bad policy fails loudly with the
  * rule id and field, never silently at runtime.
  */
 
 export const OUTCOMES = ['auto_allow', 'require_approval', 'deny'];
+export const MODES = ['observe', 'enforce'];
 const RISK_CLASSES = ['low', 'elevated', 'high', 'critical'];
-const POLICY_FIELDS = ['default', 'rules'];
-const RULE_FIELDS = ['id', 'match', 'outcome', 'reason'];
+const POLICY_FIELDS = ['default', 'defaultMode', 'rules'];
+const RULE_FIELDS = ['id', 'match', 'outcome', 'reason', 'mode', 'locked'];
 const MATCH_FIELDS = ['action', 'riskClass', 'params'];
 const NUMERIC_OPS = ['lt', 'lte', 'gt', 'gte'];
 const OPERATORS = [...NUMERIC_OPS, 'eq', 'in', 'regex'];
@@ -43,7 +49,7 @@ export class PolicyError extends Error {
 /**
  * Validate a policy document and compile it.
  * @param {unknown} doc
- * @returns {{ rules: Array<{name: string, match: Function, outcome: string, reason?: string}>, defaultOutcome: string }}
+ * @returns {{ rules: Array<{name: string, match: Function, outcome: string, reason?: string, mode: string}>, defaultOutcome: string, defaultMode: string }}
  */
 export function compilePolicy(doc) {
   if (!isPlainObject(doc)) throw new PolicyError('policy must be an object');
@@ -53,6 +59,8 @@ export function compilePolicy(doc) {
   if (!OUTCOMES.includes(defaultOutcome)) {
     throw new PolicyError(`"default" must be one of ${OUTCOMES.join(', ')}`);
   }
+  const defaultMode = doc.defaultMode ?? 'enforce';
+  if (!MODES.includes(defaultMode)) throw new PolicyError(`"defaultMode" must be one of ${MODES.join(', ')}`);
   if (!Array.isArray(doc.rules)) throw new PolicyError('"rules" must be an array');
 
   const seen = new Set();
@@ -68,11 +76,15 @@ export function compilePolicy(doc) {
     if (!OUTCOMES.includes(r.outcome)) throw fail(`"outcome" must be one of ${OUTCOMES.join(', ')}`);
     if (r.reason !== undefined && typeof r.reason !== 'string') throw fail('"reason" must be a string');
     if (!isPlainObject(r.match)) throw fail('"match" must be an object');
+    if (r.mode !== undefined && !MODES.includes(r.mode)) throw fail(`"mode" must be one of ${MODES.join(', ')}`);
+    if (r.locked !== undefined && typeof r.locked !== 'boolean') throw fail('"locked" must be true or false');
+    if (r.locked && r.mode === 'observe') throw fail('a locked rule cannot be in observe mode');
 
-    return { name: r.id, match: compileMatch(r.match, fail), outcome: r.outcome, reason: r.reason };
+    const mode = r.locked ? 'enforce' : (r.mode ?? defaultMode);
+    return { name: r.id, match: compileMatch(r.match, fail), outcome: r.outcome, reason: r.reason, mode };
   });
 
-  return { rules, defaultOutcome };
+  return { rules, defaultOutcome, defaultMode };
 }
 
 function compileMatch(match, fail) {

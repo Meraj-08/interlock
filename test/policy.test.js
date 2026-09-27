@@ -17,7 +17,7 @@ test('first matching rule wins, in file order', () => {
     ],
   });
   assert.deepEqual(policy.evaluate(bash('git push --force origin main')), {
-    outcome: 'require_approval', rule: 'force-push', reason: 'force-push',
+    outcome: 'require_approval', rule: 'force-push', reason: 'force-push', mode: 'enforce',
   });
   assert.equal(policy.evaluate(bash('ls -la')).rule, 'any-bash');
 });
@@ -155,7 +155,7 @@ test('invalid policies fail at load time and name the rule and field', () => {
   bad({ rules: [{ id: 'a', match: {}, outcome: 'block' }] }, /rule "a": "outcome" must be one of/);
   bad({ rules: [{ id: 'a', outcome: 'deny' }] }, /rule "a": "match" must be an object/);
   bad({ rules: [{ id: 'a', match: { tool: 'Bash' }, outcome: 'deny' }] }, /rule "a": unknown match field "tool"/);
-  bad({ rules: [{ id: 'a', match: {}, outcome: 'deny', mode: 'observe' }] }, /rule "a": unknown field "mode"/);
+  bad({ rules: [{ id: 'a', match: {}, outcome: 'deny', severity: 'high' }] }, /rule "a": unknown field "severity"/);
   bad({ rules: [{ id: 'a', match: { params: { command: '(' } }, outcome: 'deny' }] }, /rule "a": params.command: invalid regular expression/);
   bad({ rules: [{ id: 'a', match: { params: { amount: { lt: '5' } } }, outcome: 'deny' }] }, /rule "a": params.amount.lt must be a number/);
   bad({ rules: [{ id: 'a', match: { params: { amount: { between: [1, 2] } } }, outcome: 'deny' }] }, /rule "a": params.amount: unknown operator "between"/);

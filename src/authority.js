@@ -64,7 +64,10 @@ export class ApprovalAuthority {
    * @param {'low'|'elevated'|'high'|'critical'} [p.riskClass]
    * @param {{type: string, id: string}} [p.resource]
    * @param {string} [p.consequence] Human-readable consequence for the reviewer.
-   * @returns {Promise<{outcome: string, rule: string, reason: string, approvalId?: string, review?: Object}>}
+   * @returns {Promise<{outcome: string, rule: string, reason: string, mode: string, observed: boolean,
+   *   wouldHave: string, approvalId?: string, review?: Object}>}
+   *   `wouldHave` is the enforced outcome. In observe mode it is recorded but
+   *   the action is allowed (`observed: true`), and nothing is held or blocked.
    */
   async propose(p) {
     const decision = this.policy.evaluate({ action: p.action, riskClass: p.riskClass, params: p.params });
@@ -76,12 +79,18 @@ export class ApprovalAuthority {
       params: p.params, riskClass: p.riskClass, resource: p.resource,
     });
     let { outcome, rule, reason } = decision;
-    // A flagged action must not slip through on an auto-allow.
+    const { mode } = decision;
+    // A flagged action must not slip through on an auto-allow. The escalation
+    // takes the matched rule's mode: an observed rule stays observe-only.
     if (outcome === 'auto_allow' && analysis.escalate) {
       outcome = 'require_approval';
       rule = 'analyzer';
       reason = `escalated by risk analysis (${analysis.severity})`;
     }
+    const wouldHave = outcome;
+    const observed = mode === 'observe' && outcome !== 'auto_allow';
+    if (observed) outcome = 'auto_allow';
+    const recorded = { rule, reason, mode, observed, wouldHave };
 
     const id = 'apr_' + randomUUID().slice(0, 12);
     const request = this._request(p);
@@ -105,25 +114,27 @@ export class ApprovalAuthority {
       jti: null,
       approver: null,
       createdAt: Date.now(),
+      ...recorded,
     };
 
     if (outcome === 'deny') {
       proposal.state = 'denied';
       await this.proposalStore.set(id, proposal);
-      return { outcome: 'deny', rule, reason, findings: analysis.findings };
+      return { outcome: 'deny', ...recorded, findings: analysis.findings };
     }
 
     if (outcome === 'auto_allow') {
-      await this._mint(proposal, { approver: 'policy:auto', method: 'auto' });
-      return { outcome: 'auto_allow', rule, reason, approvalId: id, findings: analysis.findings };
+      await this._mint(proposal, observed
+        ? { approver: 'policy:observe', method: 'observe' }
+        : { approver: 'policy:auto', method: 'auto' });
+      return { outcome: 'auto_allow', ...recorded, approvalId: id, findings: analysis.findings };
     }
 
     // require_approval: hold for a human. Expose an immutable review card.
     await this.proposalStore.set(id, proposal);
     return {
       outcome: 'needs_approval',
-      rule,
-      reason,
+      ...recorded,
       approvalId: id,
       review: this._card(proposal),
       findings: analysis.findings,
