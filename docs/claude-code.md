@@ -23,7 +23,8 @@ If the Interlock service is not running, calls are blocked (fail closed).
    ```
 
 2. Start Interlock and register a passkey in the console
-   (`http://localhost:4000/console`):
+   (`http://localhost:4000/console`). Registering asks for the setup code that
+   `serve` prints when it starts:
 
    ```bash
    npx interlock serve --policy interlock.policy.json

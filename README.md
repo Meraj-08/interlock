@@ -55,7 +55,7 @@ guard.execute(id, fn) -> verify proof (signature + bindings)
 
 ```bash
 npm install
-npm test        # 83 tests
+npm test        # 91 tests
 npm run demo    # narrated offline walkthrough (approval, tamper, deny, fail-closed)
 ```
 
@@ -69,6 +69,11 @@ npm run serve   # http://localhost:4000
 - `http://localhost:4000/console` — the approval console. Register a passkey once,
   then approve pending actions with a WebAuthn ceremony (Touch ID or a security
   key). The proof is minted only after the passkey assertion verifies.
+
+Registering a passkey needs the setup code that `serve` prints when it starts
+(set your own with `--setup-code` or `INTERLOCK_SETUP_CODE`). An approver who
+already has a passkey cannot be registered again through the console or API;
+to replace a passkey, reset the server's state.
 
 State is written to `data/interlock.json`, so registrations, approvals, and
 one-time consumption survive a restart. Delete that file to reset.
@@ -105,7 +110,7 @@ If Interlock is down, calls are blocked. Setup: [docs/claude-code.md](docs/claud
 |---|---|---|
 | `POST /api/propose` | agent | returns a policy decision and an `approvalId` |
 | `GET /api/proposals` | console | lists proposals, newest first |
-| `POST /api/webauthn/register/options` and `/verify` | human | register a passkey |
+| `POST /api/webauthn/register/options` and `/verify` | human | register a passkey (needs the setup code) |
 | `POST /api/proposals/:id/approve/options` and `/verify` | human | approve via passkey; mints the proof |
 | `POST /api/proposals/:id/deny` | human | deny |
 | `POST /api/proposals/:id/execute` | agent | verify and consume once (go / no-go) |
@@ -201,6 +206,8 @@ complete example.
 | Authority unreachable | refused (`unavailable`) — fails closed |
 | Approve twice | idempotent — no second proof |
 | Approve over HTTP without a passkey | refused (`passkey_required`) |
+| Register a passkey without the setup code | refused (`setup_code_required`) |
+| Register again for an approver with a passkey | refused (`already_registered`) |
 
 ## Project layout
 
@@ -242,6 +249,9 @@ docs/                screenshots, claude-code.md (hook setup)
   single-use boundary.
 - WebAuthn `rpID` and origin are derived from the request Origin, which works on
   localhost. Set them explicitly behind a proxy or custom domain.
+- An agent running as the same OS user on the same machine as the server can
+  read and edit the server's state file. For real protection, run Interlock
+  where the agent cannot reach its files (another machine or user).
 
 ## Status
 

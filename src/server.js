@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -42,6 +43,8 @@ export class InterlockServer {
    * @param {import('./store.js').MemoryStore} [opts.store] Store for a fresh authority.
    * @param {boolean} [opts.allowClickApproval] Allow POST /approve without a
    *   passkey. Default false: an agent must not be able to approve itself.
+   * @param {string} [opts.setupCode] Code required to register a passkey.
+   *   Default: a random code, read it from `server.setupCode`.
    */
   static async create(opts = {}) {
     const s = new InterlockServer();
@@ -52,6 +55,7 @@ export class InterlockServer {
     s.guard = new Guard({ authority: s.authority });
     s.webauthn = new WebAuthnApprover({ store: s.authority.store });
     s.allowClickApproval = opts.allowClickApproval ?? false;
+    s.setupCode = opts.setupCode === undefined ? generateSetupCode() : checkSetupCode(opts.setupCode);
     s.server = createServer((req, res) => s._route(req, res));
     return s;
   }
@@ -97,13 +101,20 @@ export class InterlockServer {
         const approver = url.searchParams.get('approver') || '';
         return json(res, 200, { registered: await this.webauthn.isRegistered(approver) });
       }
-      if (method === 'POST' && path === '/api/webauthn/register/options') {
-        const { approver } = await readBody(req);
-        return json(res, 200, await this.webauthn.registrationOptions(approver, rpID(req)));
-      }
-      if (method === 'POST' && path === '/api/webauthn/register/verify') {
-        const { approver, response } = await readBody(req);
-        return json(res, 200, await this.webauthn.verifyRegistration(approver, response, rp(req)));
+      // Registering needs the setup code printed by `interlock serve`, and
+      // never replaces an approver's existing passkey.
+      const reg = path.match(/^\/api\/webauthn\/register\/(options|verify)$/);
+      if (method === 'POST' && reg) {
+        const { approver, response, setupCode } = await readBody(req);
+        if (!sameSecret(setupCode, this.setupCode)) {
+          return json(res, 403, { error: 'setup_code_required' });
+        }
+        if (await this.webauthn.isRegistered(approver)) {
+          return json(res, 409, { error: 'already_registered' });
+        }
+        return json(res, 200, reg[1] === 'options'
+          ? await this.webauthn.registrationOptions(approver, rpID(req))
+          : await this.webauthn.verifyRegistration(approver, response, rp(req)));
       }
 
       // --- WebAuthn: passkey approval of a specific proposal ---
@@ -171,6 +182,31 @@ export class InterlockServer {
       res.end('not found');
     }
   }
+}
+
+// No 0/O/1/I, so the code is easy to read off a terminal and type.
+const SETUP_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/** A random setup code like "K7QMD-4XRTB" (50 bits). */
+function generateSetupCode() {
+  const bytes = randomBytes(10);
+  const chars = [...bytes].map((b) => SETUP_ALPHABET[b % SETUP_ALPHABET.length]).join('');
+  return `${chars.slice(0, 5)}-${chars.slice(5)}`;
+}
+
+function checkSetupCode(code) {
+  if (typeof code !== 'string' || code.length < 8) {
+    throw new Error('the passkey setup code must be at least 8 characters');
+  }
+  return code;
+}
+
+/** Constant-time comparison of a submitted secret with the expected one. */
+function sameSecret(given, expected) {
+  if (typeof given !== 'string') return false;
+  const a = createHash('sha256').update(given).digest();
+  const b = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(a, b);
 }
 
 /** A safe, proof-free view of a proposal for the API/console. */

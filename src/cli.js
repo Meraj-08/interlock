@@ -42,9 +42,11 @@ Options:
   --port <n>        Port to listen on (default: $PORT or 4000; 0 picks a free port)
   --policy <file>   JSON policy file (default: $INTERLOCK_POLICY or the built-in rules)
   --data <file>     State file (default: ./data/interlock.json)
+  --setup-code <c>  Code needed to register a passkey in the console
+                    (default: $INTERLOCK_SETUP_CODE or a random code, printed at start)
   --demo            Seed a pending proposal so the console isn't empty
 `,
-    options: { port: 'value', policy: 'value', data: 'value', demo: 'flag' },
+    options: { port: 'value', policy: 'value', data: 'value', 'setup-code': 'value', demo: 'flag' },
     maxArgs: 0,
     run: serve,
   },
@@ -151,12 +153,18 @@ async function serve({ opts }, io) {
     return usageError(io, `--port must be a number from 0 to 65535, got "${rawPort}"`, COMMANDS.serve.usage);
   }
 
+  const setupCode = opts['setup-code'] ?? io.env.INTERLOCK_SETUP_CODE;
+  if (setupCode !== undefined && setupCode.length < 8) {
+    return usageError(io, 'the passkey setup code must be at least 8 characters', COMMANDS.serve.usage);
+  }
+
   let started;
   try {
     started = await startServer({
       port,
       policyPath: opts.policy ?? io.env.INTERLOCK_POLICY,
       dataPath: opts.data,
+      setupCode,
       demo: Boolean(opts.demo),
       cwd: io.cwd,
     });
@@ -170,7 +178,8 @@ async function serve({ opts }, io) {
   io.stdout.write(`   Console:  http://localhost:${started.port}/console\n`);
   io.stdout.write(`   API:      http://localhost:${started.port}/api/proposals\n`);
   io.stdout.write(`   State:    ${started.dataPath}\n`);
-  io.stdout.write(`   Policy:   ${started.policyPath ?? 'built-in default'}\n\n`);
+  io.stdout.write(`   Policy:   ${started.policyPath ?? 'built-in default'}\n`);
+  io.stdout.write(`   Setup code (to register a passkey): ${started.server.setupCode}\n\n`);
   return null;
 }
 

@@ -39,6 +39,7 @@ export class WebAuthnApprover {
 
   /** Step 1 of registration: options the browser feeds to navigator.credentials.create. */
   async registrationOptions(approver, rpID) {
+    await this._refuseIfRegistered(approver);
     const options = await generateRegistrationOptions({
       rpName: this.rpName,
       rpID,
@@ -53,6 +54,7 @@ export class WebAuthnApprover {
 
   /** Step 2: verify the attestation and store the credential. */
   async verifyRegistration(approver, response, { origin, rpID }) {
+    await this._refuseIfRegistered(approver);
     const expectedChallenge = await this.chal.get(`reg:${approver}`);
     if (!expectedChallenge) throw new Error('no pending registration');
     const { verified, registrationInfo } = await verifyRegistrationResponse({
@@ -72,6 +74,18 @@ export class WebAuthnApprover {
     });
     await this.chal.delete(`reg:${approver}`);
     return { verified: true };
+  }
+
+  /**
+   * A registered passkey is never replaced through registration: otherwise
+   * anyone who can reach the server could take over an approver.
+   */
+  async _refuseIfRegistered(approver) {
+    if (await this.isRegistered(approver)) {
+      const err = new Error(`approver "${approver}" already has a passkey`);
+      err.code = 'already_registered';
+      throw err;
+    }
   }
 
   // --- approval (authentication) ----------------------------------------

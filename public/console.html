@@ -276,10 +276,15 @@
 
     async function register() {
       const approver = approverEl.value || 'ops-console';
+      const setupCode = prompt('Setup code (printed in the terminal running interlock serve):');
+      if (!setupCode) return;
       try {
-        const options = await (await postJSON('/api/webauthn/register/options', { approver })).json();
+        const optRes = await postJSON('/api/webauthn/register/options', { approver, setupCode: setupCode.trim() });
+        if (optRes.status === 403) { toast('Wrong setup code'); return; }
+        if (optRes.status === 409) { toast(`${approver} already has a passkey`); updateRegisterButton(); return; }
+        const options = await optRes.json();
         const attResp = await startRegistration({ optionsJSON: options });
-        const { verified } = await (await postJSON('/api/webauthn/register/verify', { approver, response: attResp })).json();
+        const { verified } = await (await postJSON('/api/webauthn/register/verify', { approver, setupCode: setupCode.trim(), response: attResp })).json();
         toast(verified ? 'Passkey registered ✓' : 'Registration failed');
         updateRegisterButton();
       } catch {
