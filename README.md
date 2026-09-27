@@ -6,7 +6,7 @@
 
 <p align="center">
   <img alt="Node.js 18+" src="https://img.shields.io/badge/node-%3E%3D18-3c873a">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-103%20passing-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-114%20passing-2ea44f">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
   <a href="docs/claude-code.md"><img alt="Claude Code hook" src="https://img.shields.io/badge/Claude%20Code-hook-d97757"></a>
 </p>
@@ -28,7 +28,7 @@ cryptography rather than a flag an agent could flip.
 git clone https://github.com/Meraj-08/interlock.git
 cd interlock
 npm install
-npm test                # 103 tests
+npm test                # 114 tests
 npm run demo            # narrated offline walkthrough
 npm run serve           # service + console on http://localhost:4000
 ```
@@ -73,6 +73,7 @@ guarantee that what the human approved is exactly what runs.
 | Exactly once | Consumes each proof once; replays and double-spends are refused |
 | Fail closed | Refuses on any doubt: bad signature, expiry, mismatch, outage, timeout |
 | Agent integration | Guards Claude Code tool calls through a `PreToolUse` hook |
+| Target-side checks | Lets the service that performs the action verify and consume the receipt itself, so bypassing the agent-side guard does not help |
 
 ## Architecture
 
@@ -177,6 +178,7 @@ interlock/
 |   |-- serve.js            # startServer(): service + durable state + policy file
 |   |-- cli.js              # the `interlock` command line
 |   |-- claude-hook.js      # Claude Code PreToolUse hook
+|   |-- receipt.js          # requireReceipt(): receipt checks in the target service
 |   |-- store.js            # MemoryStore / FileStore
 |   |-- verifier.js         # Signet: two-phase verification
 |   |-- verify-offline.js   # Signet: signature + claim checks
@@ -190,6 +192,7 @@ interlock/
 |-- public/                 # landing page, approval console, logo
 |-- examples/
 |   |-- demo.js             # narrated offline walkthrough
+|   |-- receipt-demo.js     # a payments API that only trusts receipts
 |   `-- interlock.policy.json
 |-- docs/                   # Claude Code guide, screenshots
 `-- test/                   # node:test suites + Claude Code hook fixtures
@@ -261,6 +264,45 @@ Refusals carry a reason code:
 | `actor_mismatch`, `audience_mismatch` | wrong agent or wrong service |
 | `replayed` | the proof was already used |
 | `unavailable` | the authority could not be reached (fail closed) |
+
+### Receipts in the Target Service
+
+The guard protects the agent's side. A receipt lets the service that actually
+performs the action (the payments API, the database admin endpoint) check the
+approval itself, so an agent that skips the guard gets nowhere.
+
+```js
+import { requireReceipt } from 'interlock/receipt';
+
+app.post('/transfers', requireReceipt({
+  interlock: 'http://localhost:4000',
+  action: 'payments.transfer',
+  params: (req) => ({ to: req.body.to, amount: req.body.amount }),
+}), (req, res) => {
+  // Runs only for the exact approved transfer, once.
+  // req.interlock = { subject, actor, claims }
+});
+```
+
+The agent fetches its receipt with `GET /api/proposals/:id/receipt` after the
+approval and sends it in the `Interlock-Receipt` header. The service then:
+
+1. recomputes the action hash from **its own** request params;
+2. verifies the proof's signature and bindings against Interlock's public keys;
+3. consumes it once at Interlock (`POST /api/v1/verify`), the same single-use
+   record the guard uses, so a receipt spent at the service cannot also be
+   executed through the guard, and the other way round.
+
+No receipt gets `401 receipt_required`; anything else wrong gets
+`403 receipt_refused` with a reason (`consumed`, `action_hash_mismatch`,
+`action_mismatch`, `revoked`, `unavailable`, ...). `verifyRequest(req, opts)` is
+the same check without a framework. Run `npm run demo:receipt` to see it end to
+end.
+
+The receipt carries the proof plus the context Interlock froze at proposal time
+(nonce, subject, actor, resource). That context is not trusted: it only feeds
+the hash, so changing any of it makes the hash differ from the signed one. The
+params must match the approved ones exactly, including types.
 
 ### Storage
 
@@ -386,6 +428,10 @@ and options: [docs/claude-code.md](docs/claude-code.md).
 | `POST /api/proposals/:id/approve/options` and `/verify` | human | approve with a passkey; mints the proof |
 | `POST /api/proposals/:id/deny` | human | deny |
 | `POST /api/proposals/:id/execute` | agent | verify and consume the proof once |
+| `GET /api/proposals/:id/receipt` | agent | the receipt for an approved, unused proposal (`409` if not approved, `410` if used) |
+| `GET /.well-known/interlock.json` | target service | issuer, audience, and environment to verify against |
+| `GET /.well-known/graypass-proof-keys.json` | target service | public keys (JWKS) |
+| `POST /api/v1/verify` | target service | check a proof and consume it once |
 
 ## Use as a Library
 
@@ -438,6 +484,11 @@ Each row has a test:
 | Register again for an approver with a passkey | refused (`already_registered`) |
 | Rule in observe mode | recorded with `wouldHave`, never blocked or held |
 | Locked rule under `defaultMode: observe` | still enforced |
+| Target service: no receipt | refused (`receipt_required`) |
+| Target service: receipt used twice | refused (`consumed`) |
+| Target service: params changed after approval | refused (`action_hash_mismatch`) |
+| Target service: binding context altered | refused (`action_hash_mismatch`) |
+| Receipt used at the target, then through the guard | refused |
 | Claude Code hook: server down or bad input | call blocked |
 | Claude Code hook: no answer in time | call blocked, request closed |
 
@@ -452,6 +503,9 @@ Limitations:
   store with Redis or Postgres.
 - The canonical action hash is a documented, deterministic form applied the
   same way on both sides. Swap in a provider's official hasher for live use.
+- Anyone who knows an approval id can fetch its receipt, and anyone holding a
+  receipt can spend it. Either way it only runs the exact approved action,
+  once. Keep approval ids to the agent that asked.
 
 ## Development
 
@@ -459,6 +513,7 @@ Limitations:
 npm install
 npm test                # node:test, no extra dependencies
 npm run demo            # approval, tamper, deny, and outage paths
+npm run demo:receipt    # a payments API that only trusts receipts
 npm run serve           # service with a seeded demo request
 ```
 
@@ -475,6 +530,7 @@ npm run serve           # service with a seeded demo request
 | `cli.test.js` | commands, flags, exit codes |
 | `claude-hook.test.js` | the Claude Code hook, with real hook-input fixtures |
 | `observe.test.js` | observe and enforce modes, locked rules |
+| `receipt.test.js` | receipt checks in a separate target service |
 
 ## Roadmap
 
@@ -487,8 +543,8 @@ Tracked in [#9](https://github.com/Meraj-08/interlock/issues/9):
 | #4 | Claude Code passkey approval hook | done |
 | #14 | Setup code for passkey registration | done |
 | #2 | Observe and enforce modes per rule | done |
+| #6 | Receipt verification middleware for target services | done |
 | #5 | Hash-chained audit trail + `interlock trail verify` | planned |
-| #6 | Receipt verification middleware for target services | planned |
 | #7 | MCP proxy that guards `tools/call` | planned |
 | #8 | Live demo and walkthrough | planned |
 
@@ -498,6 +554,7 @@ Implemented:
 
 - Risk policy in code or JSON policy files, validated at load time
 - Observe and enforce modes per rule, with locked rules
+- Receipt checks in the target service (`requireReceipt`)
 - Action analyzer with escalation and reviewer findings
 - Approval lifecycle with single-use, action-bound ES256 proofs
 - Fail-closed guard with two-phase Signet verification
@@ -507,8 +564,8 @@ Implemented:
 - `interlock` CLI
 - Claude Code `PreToolUse` hook
 
-Planned: an audit trail, receipt checks in target services, an MCP proxy, and a
-hosted demo (see [Roadmap](#roadmap)).
+Planned: an audit trail, an MCP proxy, and a hosted demo (see
+[Roadmap](#roadmap)).
 
 ## Design Principles
 

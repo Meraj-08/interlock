@@ -4,12 +4,14 @@
   "description": "Interlock — a human circuit-breaker for risky AI-agent actions. An agent proposes, a human approves the exact action, and a single-use proof lets it run exactly once. Built on the Signet verification core. Mock-first, live-ready.",
   "type": "module",
   "exports": {
-    ".": "./src/index.js"
+    ".": "./src/index.js",
+    "./receipt": "./src/receipt.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js",
     "demo": "node examples/demo.js",
-    "serve": "node bin/serve.js"
+    "serve": "node bin/serve.js",
+    "demo:receipt": "node examples/receipt-demo.js"
   },
   "keywords": [
     "graypass",
