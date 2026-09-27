@@ -485,11 +485,6 @@ proxy, and a hosted demo (see [Roadmap](#roadmap)).
 5. Policies are data, checked when they load, not at the moment they matter.
 6. Enforce in code, not in prompts.
 
-## Acknowledgements
-
-Interlock is an independent project. Its proof model follows the GrayPass
-"Proof of Agency" contract (https://app.graypass.org/docs); the human-approval
-layer on top is Interlock's own.
 
 ## License
 
