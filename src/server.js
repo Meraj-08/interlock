@@ -25,7 +25,7 @@ const CONTENT_TYPES = {
  *   Human side (console):
  *     GET  /api/proposals               -> list (newest first)
  *     GET  /api/proposals/:id           -> one proposal
- *     POST /api/proposals/:id/approve   -> approve (mints the single-use proof)
+ *     POST /api/proposals/:id/approve   -> approve without a passkey (only if allowClickApproval)
  *     POST /api/proposals/:id/deny      -> deny
  *   UI:
  *     GET  /  and  /console             -> the approval console page
@@ -40,6 +40,8 @@ export class InterlockServer {
    * @param {ApprovalAuthority} [opts.authority] Existing authority, else one is built.
    * @param {RiskPolicy} [opts.policy] Policy for a freshly built authority.
    * @param {import('./store.js').MemoryStore} [opts.store] Store for a fresh authority.
+   * @param {boolean} [opts.allowClickApproval] Allow POST /approve without a
+   *   passkey. Default false: an agent must not be able to approve itself.
    */
   static async create(opts = {}) {
     const s = new InterlockServer();
@@ -49,6 +51,7 @@ export class InterlockServer {
     }));
     s.guard = new Guard({ authority: s.authority });
     s.webauthn = new WebAuthnApprover({ store: s.authority.store });
+    s.allowClickApproval = opts.allowClickApproval ?? false;
     s.server = createServer((req, res) => s._route(req, res));
     return s;
   }
@@ -125,6 +128,9 @@ export class InterlockServer {
           return p ? json(res, 200, publicView(p)) : json(res, 404, { error: 'unknown_approval' });
         }
         if (method === 'POST' && verb === 'approve') {
+          // An agent with a shell could call this itself, so approval without
+          // a passkey is off unless explicitly enabled (tests, demos).
+          if (!this.allowClickApproval) return json(res, 403, { error: 'passkey_required' });
           const body = await readBody(req);
           return json(res, 200, await this.authority.approve(id, {
             approver: body.approver || 'console-user',
@@ -183,6 +189,7 @@ function publicView(p) {
     action_hash: p.hash,
     approver: p.approver ?? null,
     method: p.method ?? null,
+    denyReason: p.denyReason ?? null,
     createdAt: p.createdAt,
   };
 }

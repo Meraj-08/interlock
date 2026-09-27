@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import { RiskPolicy } from './policy.js';
 import { PolicyError } from './policy-file.js';
 import { startServer } from './serve.js';
+import { runClaudeHook, DEFAULT_SERVER, DEFAULT_TIMEOUT_MS } from './claude-hook.js';
 
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 const DEFAULT_POLICY = 'interlock.policy.json';
@@ -22,7 +23,7 @@ const USAGE = `Usage: interlock <command> [options]
 Commands:
   serve                  Start the approval service and web console
   policy check [file]    Validate a policy file (default ./${DEFAULT_POLICY})
-  hook claude            Claude Code PreToolUse hook (coming in #4)
+  hook claude            Claude Code PreToolUse hook (passkey approval for risky tool calls)
   trail verify           Verify the audit trail (coming in #5)
 
 Options:
@@ -58,14 +59,23 @@ $INTERLOCK_POLICY, else ./${DEFAULT_POLICY}. Exits 1 if it is invalid.
     run: policyCheck,
   },
   'hook claude': {
-    usage: `Usage: interlock hook claude
+    usage: `Usage: interlock hook claude [options]
 
-Claude Code PreToolUse hook: send tool calls through the policy and wait
-for a passkey approval when one is required. Not available yet (#4).
+Claude Code PreToolUse hook. Reads the tool call as JSON on stdin, sends it
+through the Interlock policy, and prints Claude Code's decision JSON:
+blocked calls are denied with a reason, calls that need a human wait for a
+passkey approval in the console. Fails closed if Interlock is unreachable.
+
+Options:
+  --server <url>    Interlock service (default: $INTERLOCK_URL or ${DEFAULT_SERVER})
+  --timeout <sec>   How long to wait for an approval (default: ${DEFAULT_TIMEOUT_MS / 1000}).
+                    Keep it below the hook's "timeout" in Claude Code settings.
+  --user <name>     Who the agent acts for (default: $INTERLOCK_USER or your login)
+  --no-open         Don't open the console in the browser
 `,
-    options: {},
+    options: { server: 'value', timeout: 'value', user: 'value', 'no-open': 'flag' },
     maxArgs: 0,
-    run: notYet('#4'),
+    run: hookClaude,
   },
   'trail verify': {
     usage: `Usage: interlock trail verify
@@ -177,6 +187,45 @@ async function policyCheck({ args }, io) {
   const n = policy.rules.length;
   io.stdout.write(`${path}: valid: ${n} rule${n === 1 ? '' : 's'}, default ${policy.defaultOutcome}\n`);
   return 0;
+}
+
+async function hookClaude({ opts }, io) {
+  let timeoutMs;
+  if (opts.timeout !== undefined) {
+    const sec = Number(opts.timeout);
+    if (!Number.isFinite(sec) || sec <= 0) {
+      return usageError(io, `--timeout must be a positive number of seconds, got "${opts.timeout}"`, COMMANDS['hook claude'].usage);
+    }
+    timeoutMs = sec * 1000;
+  }
+
+  const text = await (io.readStdin ?? readStdin)();
+  let input;
+  try {
+    input = JSON.parse(text);
+  } catch {
+    input = null;
+  }
+
+  const out = await runClaudeHook(input, {
+    server: opts.server ?? io.env.INTERLOCK_URL,
+    timeoutMs,
+    user: opts.user ?? io.env.INTERLOCK_USER,
+    openUrl: opts['no-open'] ? () => {} : undefined,
+  });
+  // Always exit 0 and let the JSON carry the decision; no output = no objection.
+  if (out) io.stdout.write(`${JSON.stringify(out)}\n`);
+  return 0;
+}
+
+function readStdin() {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (c) => { data += c; });
+    process.stdin.on('end', () => resolve(data));
+    process.stdin.on('error', reject);
+  });
 }
 
 function notYet(issue) {

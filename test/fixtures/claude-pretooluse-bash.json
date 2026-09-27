@@ -1,0 +1,12 @@
+{
+  "session_id": "8f2c1e0a-4b7d-4c1e-9d3a-2f6b8e1c7a90",
+  "transcript_path": "/Users/dev/.claude/projects/-Users-dev-app/8f2c1e0a-4b7d-4c1e-9d3a-2f6b8e1c7a90.jsonl",
+  "cwd": "/Users/dev/app",
+  "permission_mode": "default",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git push --force origin main",
+    "description": "Force-push the rewritten history to main"
+  }
+}

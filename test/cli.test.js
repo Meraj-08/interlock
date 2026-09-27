@@ -12,7 +12,7 @@ const BIN = join(ROOT, 'bin', 'interlock.js');
 const EXAMPLE = join(ROOT, 'examples', 'interlock.policy.json');
 
 /** Run the CLI in-process and capture its output. */
-async function cli(args, { cwd = ROOT, env = {} } = {}) {
+async function cli(args, { cwd = ROOT, env = {}, stdin = '' } = {}) {
   let out = '';
   let err = '';
   const io = {
@@ -20,6 +20,7 @@ async function cli(args, { cwd = ROOT, env = {} } = {}) {
     stderr: { write: (s) => { err += s; } },
     cwd,
     env,
+    readStdin: async () => stdin,
   };
   const code = await run(args, io);
   return { code, out, err };
@@ -127,10 +128,6 @@ test('unknown flags and extra arguments are usage errors', async () => {
 });
 
 test('commands that are not built yet say so and exit 1', async () => {
-  const hook = await cli(['hook', 'claude']);
-  assert.equal(hook.code, 1);
-  assert.match(hook.err, /not available yet.*#4/);
-
   const trail = await cli(['trail', 'verify']);
   assert.equal(trail.code, 1);
   assert.match(trail.err, /not available yet.*#5/);
